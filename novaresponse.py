@@ -5,17 +5,18 @@ from google import genai
 from google.genai import types
 import config
 
+# Initialize Groq Client for Large Language Model operations
 client = Groq(api_key=config.GROQ_API_KEY)
 
 
 def search_response(query, history):
     """
-    Performs a Google Search using Gemini 2.0 Flash Lite and returns the answer.
+    Executes a real-time information retrieval request using Google Gemini 2.0 Flash Lite.
+    Integrates search results into the Nova AI Robot's conversation context.
     """
     try:
         client = genai.Client(api_key=config.GEMINI_API_KEY)
         
-        # Construct context from history
         context_str = ""
         if history:
             context_str += "SHORT TERM MEMORY:\n" + "\n".join(history.get("short_term", [])) + "\n\n"
@@ -58,6 +59,10 @@ def search_response(query, history):
 
 
 def response(query, history):
+    """
+    Generates the core conversational response for the Nova AI Robot using the OpenAI GPT-OSS-20B model.
+    Handles personality injection, token generation for visual/search triggers, and context management.
+    """
     system_prompt = """SYSTEM PROMPT FOR NOVA
     
     === CRITICAL TOKEN OUTPUT RULES (HIGHEST PRIORITY) ===
@@ -102,7 +107,7 @@ def response(query, history):
     - NEVER use emojis (they cause TTS errors).
     """
     completion = client.chat.completions.create(
-        model="llama-3.1-8b-instant",  # FAST MODEL: ~0.3s response time
+        model="openai/gpt-oss-20b",
         messages=[
             {"role": "system", "content": system_prompt},
             {
@@ -110,62 +115,40 @@ def response(query, history):
                 "content": f"query - {query}, conversation_history - {history}",
             },
         ],
-        stream=False  # DISABLE STREAMING
+        stream=False
     )
 
     return completion.choices[0].message.content
 
 
-
 import cv2
 import threading
 import time
-import os
-
-
-# camera_daemon.py
-import cv2
-import threading
-import time
-import os
-import json
 import os
 
 
 def save_response(prompt: str, response: str) -> None:
     """
-    Saves a prompt and response to a "conversation" list within conversation_history.json.
-    It ensures the file maintains a dictionary structure with short_term, long_term,
-    and conversation keys.
-
-    Args:
-        prompt: The user's input prompt.
-        response: The AI's generated response.
+    Persists the interaction data to the conversation history JSON file.
+    Ensures data integrity for long-term memory processing.
     """
     filename = config.CONVERSATION_HISTORY_FILE
 
-    # Default structure for the JSON file
     data_dict = {"short_term": [], "long_term": [], "conversation": []}
 
-    # Load existing data if the file exists
     if os.path.exists(filename):
         try:
             with open(filename, "r") as f:
                 loaded_content = json.load(f)
                 if isinstance(loaded_content, dict):
-                    # Ensure all necessary keys are present
                     data_dict["short_term"] = loaded_content.get("short_term", [])
                     data_dict["long_term"] = loaded_content.get("long_term", [])
                     data_dict["conversation"] = loaded_content.get("conversation", [])
                 else:
-                    # Handle cases where the file might have an old, incorrect format
-                    print(
-                        f"Warning: {filename} did not contain a dictionary. Initializing fresh."
-                    )
+                    print(f"Warning: {filename} format invalid. Resetting.")
         except json.JSONDecodeError:
-            print(f"Warning: {filename} was corrupted. Initializing fresh.")
+            print(f"Warning: {filename} corrupted. Resetting.")
 
-    # Add the new conversation turn
     data_dict["conversation"].append(
         {
             "prompt": prompt,
@@ -173,7 +156,6 @@ def save_response(prompt: str, response: str) -> None:
         }
     )
 
-    # Save the updated data back to the file
     with open(filename, "w") as f:
         json.dump(data_dict, f, indent=2)
 
@@ -182,15 +164,11 @@ import json
 import os
 from groq import Groq
 
-# This assumes you have a Groq client initialized.
-# Replace with your actual API key.
-
 
 def long_term_memory_converter():
     """
-    Loads raw conversation history, uses an LLM to update short-term and long-term
-    memory, and then overwrites the history file with the updated, structured memory,
-    clearing the raw conversation turns that have been processed.
+    Analyzes recent conversation logs to extract and consolidate long-term memory facts.
+    Uses LLM summarization to update the robot's knowledge base about the user.
     """
     filename = config.CHAT_LOG_FILE
 
@@ -198,7 +176,6 @@ def long_term_memory_converter():
     current_long_memory = []
     raw_conversation_turns = []
 
-    # 1. Load existing data from the file
     if os.path.exists(filename):
         try:
             with open(filename, "r") as f:
@@ -210,12 +187,10 @@ def long_term_memory_converter():
         except (json.JSONDecodeError, AttributeError):
             print(f"Warning: Could not read {filename}. Starting fresh.")
 
-    # 2. If there's nothing to process, exit early.
     if not raw_conversation_turns:
         print("LTM Converter: No new conversation turns to process.")
         return current_short_memory, current_long_memory
 
-    # 3. Prepare the conversation history for the LLM
     chat_history_parts = ["Recent conversation to summarize:"]
     for turn in raw_conversation_turns:
         chat_history_parts.append(
@@ -224,7 +199,6 @@ def long_term_memory_converter():
 
     chat_history_for_llm = "\n".join(chat_history_parts)
 
-    # 4. Define system instructions for the LLM
     system_instruction = (
         "You are a memory management AI. Process the provided chat history to update memory. "
         "Return a JSON object with 'short_term' and 'long_term' fields. "
@@ -245,10 +219,9 @@ def long_term_memory_converter():
     updated_short_memory = list(current_short_memory)
     updated_long_memory = list(current_long_memory)
 
-    # 5. Call the LLM to process the conversation
     try:
         completion = client.chat.completions.create(
-            model="llama-3.1-8b-instant",  # FAST MODEL
+            model="openai/gpt-oss-20b",
             messages=messages,
             temperature=0.5,
             response_format={"type": "json_object"},
@@ -257,10 +230,8 @@ def long_term_memory_converter():
 
         memory_json = json.loads(llm_response_content)
 
-        # Update memories with the LLM's output
         updated_short_memory = memory_json.get("short_term", [])[:5]
 
-        # Merge and deduplicate long-term memory
         new_long_items = memory_json.get("long_term", [])
         for item in new_long_items:
             if item not in updated_long_memory:
@@ -268,23 +239,22 @@ def long_term_memory_converter():
         updated_long_memory = updated_long_memory[:15]
 
     except Exception as e:
-        print(f"LTM Converter: Error during LLM call or processing: {e}")
+        print(f"LTM Converter Error: {e}")
 
-    # 6. Save the new memory structure, clearing the processed conversations
     try:
         with open(filename, "w") as f:
             json.dump(
                 {
                     "short_term": updated_short_memory,
                     "long_term": updated_long_memory,
-                    "conversation": [],  # Clear the processed conversation turns
+                    "conversation": [],
                 },
                 f,
                 indent=2,
             )
-        print(f"LTM Converter: Memory updated successfully.")
+        print(f"LTM Converter: Memory updated.")
     except Exception as e:
-        print(f"LTM Converter: Error saving updated memory: {e}")
+        print(f"LTM Converter: Error saving memory: {e}")
 
     return updated_short_memory, updated_long_memory
 
@@ -296,6 +266,10 @@ from google.genai import types
 
 
 def query_with_image(query, conversation_history, image_path) -> str:
+    """
+    Processes visual input using Google Gemini 2.0 Flash Vision capabilities.
+    Generates a descriptive and context-aware response based on the provided image.
+    """
     proper_query = f"The user has provided an image and asks: {query}. Conversation Context: {conversation_history}"
     system_instruction = """
 ROLE & IDENTITY:
@@ -325,11 +299,9 @@ EXAMPLES:
 """
     client = genai.Client(api_key=config.GEMINI_API_KEY)
 
-    # --- read image as raw bytes ---
     with open(image_path, "rb") as f:
         image_data = f.read()
 
-    # --- build contents ---
     contents = [
         types.Content(
             role="user",
@@ -345,14 +317,12 @@ EXAMPLES:
         ),
     ]
 
-    # --- config with system style ---
     generate_content_config = types.GenerateContentConfig(
         system_instruction=[
             types.Part.from_text(text=system_instruction),
         ],
     )
 
-    # --- stream response ---
     response_text = ""
     for chunk in client.models.generate_content_stream(
         model="models/gemini-2.0-flash",
@@ -360,7 +330,7 @@ EXAMPLES:
         config=generate_content_config,
     ):
         if chunk.text:
-            print(chunk.text, end="", flush=True)  # optional: stream to console
+            print(chunk.text, end="", flush=True)
             response_text += chunk.text
 
     return response_text
@@ -368,42 +338,6 @@ EXAMPLES:
 
 def save_response(prompt: str, response: str) -> None:
     """
-    Saves a prompt and response to a "conversation" list within conversation_history.json.
-    It ensures the file maintains a dictionary structure with short_term, long_term,
-    and conversation keys.
-
-    Args:
-        prompt: The user's input prompt.
-        response: The AI's generated response.
-    """
-    filename = config.CHAT_LOG_FILE
-
-    # Default structure for the JSON file
-    data_dict = {"short_term": [], "long_term": [], "conversation": []}
-
-    # Load existing data if the file exists
-    if os.path.exists(filename):
-        try:
-            with open(filename, "r") as f:
-                loaded_content = json.load(f)
-                if isinstance(loaded_content, dict):
-                    # Ensure all necessary keys are present
-                    data_dict["short_term"] = loaded_content.get("short_term", [])
-                    data_dict["long_term"] = loaded_content.get("long_term", [])
-                    data_dict["conversation"] = loaded_content.get("conversation", [])
-                else:
-                    # Handle cases where the file might have an old, incorrect format
-                    print(
-                        f"Warning: {filename} did not contain a dictionary. Initializing fresh."
-                    )
-        except json.JSONDecodeError:
-            print(f"Warning: {filename} was corrupted. Initializing fresh.")
-
-    # Add the new conversation turn
-    data_dict["conversation"].append(
-        {
-            "prompt": prompt,
-            "response": response,
         }
     )
 

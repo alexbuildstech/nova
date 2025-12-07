@@ -1,66 +1,83 @@
-# Nova Animatronic Robot
+# Nova AI Robot - Advanced Open Source InMoov Modification
 
-Nova is an advanced, AI-powered animatronic robot based on the InMoov open-source project. It features real-time speech-to-text, LLM-based conversation (Groq/Llama 3), visual perception (Gemini 2.0 Flash), and face tracking with servo control.
+**Nova** is a cutting-edge, independent software modification for the **InMoov** open-source 3D printed robot. Designed to bring static animatronics to life, Nova integrates advanced **Large Language Models (LLMs)**, **Computer Vision**, and **Real-Time Voice Interaction** to create a fully autonomous, conversational humanoid robot.
 
-## Features
+> **Note:** This project is independent software and is currently **not connected to MyRobotLab**, although future integration is planned.
 
-*   **Natural Conversation**: Powered by Llama 3 via Groq for fast, witty, and grounded responses.
-*   **Visual Perception**: Uses Google's Gemini 2.0 Flash to "see" and describe the world, rate objects, and answer visual queries.
-*   **Face Tracking**: smooth, cinematic face tracking using OpenCV and servo motors (InMoov head).
-*   **Voice Interaction**: Real-time speech recognition (Whisper) and text-to-speech.
-*   **Web Interface**: A local web dashboard to monitor the robot's status.
+---
 
-## Hardware Requirements
+## 🚀 Key Features
 
-*   **InMoov Robot Head**: (or similar animatronic setup) with servos for neck and eye movements.
-*   **Arduino**: For controlling the servos (via serial).
-*   **Camera**: USB Webcam or similar.
-*   **Microphone**: For voice input.
-*   **Speaker**: For audio output.
-*   **Computer**: Linux/Windows/Mac to run the Python brain.
+*   **Advanced Conversational AI**: Powered by **OpenAI GPT-OSS-20B** (via Groq) for ultra-fast, human-like dialogue.
+*   **Visual Perception**: Utilizes **Google Gemini 2.0 Flash Vision** to see, analyze, and describe the world in real-time.
+*   **Real-Time Information**: Integrated **Google Search** capabilities for up-to-the-minute news, weather, and data.
+*   **Face Tracking & Eye Contact**: Autonomous servo control for realistic face tracking and "Absolute Cinema" eye movement dynamics.
+*   **Voice Interaction**: Low-latency Speech-to-Text (STT) and Text-to-Speech (TTS) for seamless verbal communication.
+*   **Web Dashboard**: A local web interface for monitoring and control.
 
-## Installation
+---
 
-1.  **Clone the repository**:
+## 🛠️ Hardware Requirements
+
+Nova is optimized for the **InMoov** robot platform but can be adapted for other animatronic heads.
+
+*   **Computer**: Linux/Windows PC (NVIDIA GPU recommended for local inference, but cloud APIs are supported).
+*   **Microcontroller**: Arduino Uno/Mega (for servo control).
+*   **Camera**: USB Webcam (Logitech C920 or similar).
+*   **Microphone**: High-quality USB microphone.
+*   **Servos**: Standard hobby servos for neck and eye mechanisms.
+
+---
+
+## 📦 Installation
+
+1.  **Clone the Repository**
     ```bash
     git clone https://github.com/alexbuildstech/nova.git
     cd nova
     ```
 
-2.  **Install Dependencies**:
+2.  **Install Dependencies**
     ```bash
     pip install -r requirements.txt
     ```
 
-3.  **Configuration**:
+3.  **Configuration**
     *   Open `config.py`.
-    *   **API Keys**: You need a Groq API key and a Google Gemini API key.
-        *   Get Groq Key: [https://console.groq.com/](https://console.groq.com/)
-        *   Get Gemini Key: [https://aistudio.google.com/](https://aistudio.google.com/)
-    *   **Hardware**: Update `CAMERA_INDEX` if your camera isn't detected. Set `SERIAL_PORT` for your Arduino (e.g., `/dev/ttyACM0`).
+    *   Add your API Keys (**Groq**, **Google Gemini**).
+    *   Configure your hardware settings (Camera Index, Serial Port).
 
-4.  **Run**:
+4.  **Run Nova**
     ```bash
     python3 novamain.py
     ```
 
-## Usage
+---
 
-*   **Talk**: Press 'c' to start recording your voice. Press 's' to stop and send.
-*   **Visual Queries**: Ask "What do you see?", "Look at this", or "Rate this" to trigger the vision system.
-*   **Stop**: Press `Ctrl+C` to exit.
+## 🤝 Sponsors
 
-## Sponsors
+This project is made possible by the generous support of our sponsors:
 
-A huge thank you to our sponsors who made this project possible:
+### **Plymaker**
+Leading the way in advanced 3D printing materials and rapid prototyping solutions. Plymaker empowers makers to build the future.
 
-*   **Plymaker**: For supporting the 3D printing and fabrication.
-*   **DFRobot**: For providing high-quality electronics and components.
+### **DFRobot**
+A world-leading robotics and open-source hardware provider. DFRobot supplies the high-quality sensors and controllers that make Nova tick.
 
-## Contributing
+---
 
-We welcome contributions! Please fork the repository and submit a pull request.
+## 🔮 Future Roadmap
 
-## License
+*   **MyRobotLab Integration**: Full compatibility with the MyRobotLab ecosystem.
+*   **Gesture Control**: Hand tracking and arm movement synchronization.
+*   **Local LLM Support**: Offline inference using Llama 3.
+
+---
+
+## 📄 License
 
 This project is open-source and available under the MIT License.
+
+---
+
+*Keywords: InMoov, AI Robot, Python, LLM, Computer Vision, OpenAI, Gemini, Robotics, Animatronics, Open Source, Artificial Intelligence, Face Tracking, Voice Assistant.*
