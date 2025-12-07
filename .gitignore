@@ -1,0 +1,6 @@
+captures/
+__pycache__/
+*.pyc
+chat_log.json
+conversation_history.json
+.env

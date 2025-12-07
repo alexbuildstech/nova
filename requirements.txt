@@ -1,0 +1,9 @@
+groq
+google-genai
+opencv-python
+pyserial
+sounddevice
+pynput
+numpy
+flask
+requests

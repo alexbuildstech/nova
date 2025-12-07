@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nova Control Panel</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            text-align: center;
+            opacity: 0.8;
+            margin-bottom: 30px;
+        }
+        .video-container {
+            background: rgba(0,0,0,0.3);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        #videoFeed {
+            width: 100%;
+            max-width: 800px;
+            display: block;
+            margin: 0 auto;
+            border-radius: 8px;
+        }
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            padding: 15px 30px;
+            font-size: 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        .status {
+            background: rgba(0,0,0,0.3);
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .active { background: #4ade80; }
+        .inactive { background: #f87171; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 Nova Control Panel</h1>
+        <p class="subtitle">Humanoid Robot Interface</p>
+        
+        <div class="video-container">
+            <img id="videoFeed" src="/video_feed" alt="Nova Camera Feed">
+        </div>
+        
+        <div class="controls">
+            <button onclick="startRecording()">🎤 Start Recording</button>
+            <button onclick="stopRecording()">⏹️ Stop Recording</button>
+            <button onclick="stopSpeech()">🛑 Stop Speech</button>
+            <button onclick="resetSystem()">🔄 Reset</button>
+        </div>
+        
+        <div class="status" id="status">
+            <div><span class="status-indicator inactive"></span> Loading status...</div>
+        </div>
+    </div>
+    
+    <script>
+        async function startRecording() {
+            const response = await fetch('/command/record_start', { method: 'POST' });
+            const data = await response.json();
+            console.log(data);
+            updateStatus();
+        }
+        
+        async function stopRecording() {
+            const response = await fetch('/command/record_stop', { method: 'POST' });
+            const data = await response.json();
+            console.log(data);
+            updateStatus();
+        }
+        
+        async function stopSpeech() {
+            const response = await fetch('/command/speech_stop', { method: 'POST' });
+            const data = await response.json();
+            console.log(data);
+        }
+        
+        async function resetSystem() {
+            const response = await fetch('/command/reset', { method: 'POST' });
+            const data = await response.json();
+            console.log(data);
+        }
+        
+        async function updateStatus() {
+            try {
+                const response = await fetch('/status');
+                const data = await response.json();
+                const statusDiv = document.getElementById('status');
+                
+                let html = '<div>';
+                html += '<span class="status-indicator ' + (data.is_recording ? 'active' : 'inactive') + '"></span>';
+                html += 'Recording: ' + (data.is_recording ? 'ACTIVE' : 'Inactive');
+                html += '</div><div>';
+                html += '<span class="status-indicator ' + (data.camera_active ? 'active' : 'inactive') + '"></span>';
+                html += 'Camera: ' + (data.camera_active ? 'ACTIVE' : 'Inactive');
+                html += '</div>';
+                
+                statusDiv.innerHTML = html;
+            } catch (e) {
+                console.error('Status update failed:', e);
+            }
+        }
+        
+        // Update status every 2 seconds
+        setInterval(updateStatus, 2000);
+        updateStatus();
+    </script>
+</body>
+</html>
