@@ -58,11 +58,14 @@ Nova is optimized for the **InMoov** robot platform but can be adapted for other
 
 This project is made possible by the generous support of our sponsors:
 
-### **Plymaker**
-Leading the way in advanced 3D printing materials and rapid prototyping solutions. Plymaker empowers makers to build the future.
+### **Polymaker**
+Leading the way in advanced 3D printing materials. Polymaker provides the high-quality filament that brings Nova's physical form to life.
 
 ### **DFRobot**
-A world-leading robotics and open-source hardware provider. DFRobot supplies the high-quality sensors and controllers that make Nova tick.
+A world-leading robotics and open-source hardware provider. DFRobot supplies the essential electronics and sensors that power Nova's intelligence.
+
+### **Radxa**
+Innovators in Single Board Computers (SBCs). Radxa provides the powerful computing core that drives Nova's AI processing.
 
 ---
 
