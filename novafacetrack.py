@@ -88,76 +88,119 @@ class FaceTracker(threading.Thread):
             cap = cv2.VideoCapture(try_idx)
             if cap.isOpened():
                 print(f"✅ [FaceTracker] Camera opened at index {try_idx}.")
-                return cap
-            else:
-                print(f"⚠️ [FaceTracker] Camera index {try_idx} unavailable, trying next.")
-        return None
 
-    def _camera_reader_loop(self):
-        # Try to open the configured camera index, fallback to next indices if unavailable
-        cap = self._open_camera(self.CAMERA_INDEX)
-        if not cap:
-            print("❌ [FaceTracker] No available camera found. Running in AUDIO-ONLY mode.")
-            self.running = False
-            return
-            
-        while self.running:
-            ret, frame = cap.read()
-            if not ret:
-                time.sleep(0.1)
-                continue
-            
-            if self.camera_output_queue.full():
-                try: self.camera_output_queue.get_nowait()
-                except queue.Empty: pass
-            self.camera_output_queue.put(frame)
+        # Servo Motor Constraints
+        self.MIN_ANGLE = config.SERVO_MIN_ANGLE
+        self.MAX_ANGLE = config.SERVO_MAX_ANGLE
         
-        cap.release()
-        print("✅ Camera reader thread stopped.")
+        # Initial Servo Positions (Centered)
+        self.current_x_angle = 90
+        self.current_y_angle = 90
+        
+        # Eye Mechanism Constraints
+        self.EYE_V_MIN = config.EYE_V_MIN
+        self.EYE_V_MID = config.EYE_V_MID
+        self.EYE_V_MAX = config.EYE_V_MAX
 
-    def _face_detection_loop(self):
+    def run(self):
+        """
+        Main execution loop for the Vision Thread.
+        Captures video, processes frames, and calculates servo trajectories.
+        """
+        print(f"📷 Initializing Vision System on Camera Index {self.camera_index}...")
+        self.cap = cv2.VideoCapture(self.camera_index)
+        
+        if not self.cap.isOpened():
+            print("❌ Vision System Failure: Camera not detected.")
+            return
+
+        # Optimize Camera Settings for Low Latency
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        self.cap.set(cv2.CAP_PROP_FPS, 30)
+
         while self.running:
-            try:
-                frame_copy = self.detection_frame_queue.get(timeout=1)
-            except queue.Empty:
+            ret, frame = self.cap.read()
+            if not ret:
                 continue
 
-            (h, w) = frame_copy.shape[:2]
-            
-            h_dead_zone_start = w * (0.5 - self.HORIZONTAL_DEAD_ZONE_PERCENT / 2)
-            h_dead_zone_end = w * (0.5 + self.HORIZONTAL_DEAD_ZONE_PERCENT / 2)
-            
-            blob = cv2.dnn.blobFromImage(cv2.resize(frame_copy, (300, 300)), 1.0, (300, 300), (104.0, 177.0, 123.0))
+            # Update Frame Buffer (Thread-Safe)
+            with self.lock:
+                self.latest_frame = frame.copy()
+
+            # Pre-process frame for DNN Inference
+            (h, w) = frame.shape[:2]
+            blob = cv2.dnn.blobFromImage(cv2.resize(frame, (300, 300)), 1.0,
+                (300, 300), (104.0, 177.0, 123.0))
+
             self.net.setInput(blob)
             detections = self.net.forward()
 
-            best_confidence = 0
-            best_face_box = None
-            found_face_this_frame = False
-
+            face_found = False
+            
+            # Iterate through detections to find the most prominent face
             for i in range(0, detections.shape[2]):
                 confidence = detections[0, 0, i, 2]
-                if confidence > self.CONFIDENCE_THRESHOLD and confidence > best_confidence:
-                    found_face_this_frame = True
-                    best_confidence = confidence
+
+                if confidence > 0.5:
+                    face_found = True
                     box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
-                    best_face_box = box.astype("int")
+                    (startX, startY, endX, endY) = box.astype("int")
+
+                    # Calculate Face Centroid
+                    face_center_x = (startX + endX) // 2
+                    face_center_y = (startY + endY) // 2
                     
-                    face_center_x = (best_face_box[0] + best_face_box[2]) / 2
+                    # Calculate Frame Center
+                    frame_center_x = w // 2
+                    frame_center_y = h // 2
 
-                    if not (h_dead_zone_start < face_center_x < h_dead_zone_end):
-                        # FIX: This mapping is now correct. Right on screen = right turn.
-                        self.target_angle = self._map_value(face_center_x, 0, w, self.MIN_ANGLE, self.MAX_ANGLE)
-            
-            if found_face_this_frame:
-                box_width = best_face_box[2] - best_face_box[0]
-                
-                # Dynamic speed logic based on face distance
-                self.dynamic_max_angle_step = self._map_value(box_width, self.MIN_FACE_WIDTH_SCALE, self.MAX_FACE_WIDTH_SCALE, self.MAX_STEP_FAR, self.MIN_STEP_CLOSE)
-                self.dynamic_max_angle_step = max(self.MIN_STEP_CLOSE, min(self.dynamic_max_angle_step, self.MAX_STEP_FAR))
+                    # Calculate Error Deltas
+                    error_x = face_center_x - frame_center_x
+                    error_y = face_center_y - frame_center_y
 
-                # RESTORED: Direct, responsive z-axis mapping for cinematic feel
-                self.target_eye_v_angle = self._map_value(box_width, self.MIN_FACE_WIDTH_SCALE, self.MAX_FACE_WIDTH_SCALE, self.EYE_V_MAX, self.EYE_V_MIN)
+                    # Proportional Control Logic (Simple P-Controller)
+                    if abs(error_x) > 20:
+                        self.current_x_angle -= error_x * 0.05
+                    if abs(error_y) > 20:
+                        self.current_y_angle += error_y * 0.05
+
+                    # Clamp Servo Angles to Safe Limits
+                    self.current_x_angle = max(self.MIN_ANGLE, min(self.MAX_ANGLE, self.current_x_angle))
+                    self.current_y_angle = max(self.MIN_ANGLE, min(self.MAX_ANGLE, self.current_y_angle))
+
+                    # Dispatch Servo Commands
+                    # X-axis controls Head Rotation (Neck)
+                    self.command_callback(f"S0:{int(self.current_x_angle)}")
+                    
+                    # Y-axis controls Eye Vertical Movement (Eyelids/Eyeballs)
+                    # Map Y-angle to Eye Servo Range
+                    eye_angle = np.interp(self.current_y_angle, [self.MIN_ANGLE, self.MAX_ANGLE], [self.EYE_V_MIN, self.EYE_V_MAX])
+                    self.command_callback(f"S1:{int(eye_angle)}")
+                    
+                    # Break after tracking the primary face
+                    break
+
+            time.sleep(0.03)
+
+        self.cap.release()
+        print("📷 Vision System Deactivated.")
+
+    def get_latest_frame(self):
+        """
+        Retrieves the most recent frame from the buffer.
+        Thread-safe access for external visual analysis.
+        """
+        with self.lock:
+            if self.latest_frame is not None:
+                return self.latest_frame.copy()
+            return None
+
+    def stop(self):
+        """
+        Signals the thread to terminate gracefully.
+        """
+        self.running = False
 
             with self.box_lock:
                  # Update the box if a face is found, otherwise it holds the last good box

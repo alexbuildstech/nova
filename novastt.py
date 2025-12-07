@@ -55,88 +55,49 @@ class SpeechToText:
         if self.on_record_start:
             self.on_record_start()
             
-        self.audio_buffer = io.BytesIO()
-        self.wave_file = wave.open(self.audio_buffer, "wb")
-        self.wave_file.setnchannels(self.CHANNELS)
-        self.wave_file.setsampwidth(np.dtype(self.DTYPE).itemsize)
-        self.wave_file.setframerate(self.SAMPLERATE)
-
-        def audio_callback(indata, frames, time, status):
-            if status:
-                print(status, flush=True)
-            self.wave_file.writeframes(indata.tobytes())
-
-        self.stream = sd.InputStream(
-            samplerate=self.SAMPLERATE,
-            blocksize=self.CHUNK,
-            dtype=self.DTYPE,
-            channels=self.CHANNELS,
-            callback=audio_callback,
-        )
-        self.stream.start()
-
-    def _stop_recording_and_transcribe(self):
-        if not self.is_recording:
-            return
-        self.is_recording = False
-        print("⏹️ Recording stopped")
-        if self.stream:
-            self.stream.stop()
-            self.stream.close()
-        if self.wave_file:
-            self.wave_file.close()
-        print("Transcribing...")
+        print("\n🎙️ Audio Capture Active...")
+        frames = []
         
-        # Get the data from the buffer
-        self.audio_buffer.seek(0)
-        audio_data = self.audio_buffer.read()
+        # Open audio stream
+        with self.microphone as source:
+            # Dynamic ambient noise adjustment
+            self.recognizer.adjust_for_ambient_noise(source, duration=0.5)
+            
+            while self.is_recording:
+                try:
+                    audio_chunk = source.stream.read(config.MIC_CHUNK_SIZE)
+                    frames.append(audio_chunk)
+                except Exception as e:
+                    print(f"⚠️ Audio Stream Error: {e}")
+                    break
+        
+        print("⏹️ Audio Capture Complete. Processing...")
+        
+        # Convert raw PCM data to AudioData object
+        audio_data = sr.AudioData(b''.join(frames), source.SAMPLE_RATE, source.SAMPLE_WIDTH)
+        return audio_data
 
-        # Run transcription in a thread so listener keeps working
-        threading.Thread(
-            target=self._transcribe_audio, args=(audio_data,), daemon=True
-        ).start()
-
-    def _transcribe_audio(self, audio_data):
+    def transcribe_audio(self, audio_data):
+        """
+        Transcribes captured audio using the Groq Whisper API.
+        Delivers near-instantaneous text conversion for fluid conversation.
+        """
         try:
-            transcription = self.client.audio.transcriptions.create(
-                file=("audio.wav", audio_data),
-                model="whisper-large-v3-turbo",
-                language="en",
-            )
+            # Save temporary buffer for API transmission
+            temp_filename = "temp_speech.mp3"
+            with open(temp_filename, "wb") as f:
+                f.write(audio_data.get_wav_data())
+            
+            with open(temp_filename, "rb") as file:
+                transcription = self.client.audio.transcriptions.create(
+                    file=(temp_filename, file.read()),
+                    model="whisper-large-v3-turbo",
+                    response_format="json",
+                    language="en",
+                    temperature=0.0
+                )
+            
             text = transcription.text.strip()
-
-            # ADD: replace "Noah" with "Nova"
-            text = text.replace("Noah", "Nova")
-
-            print(f"📝 Transcription: {text}")
-            self.transcribed_text = text  # <-- store here for main code
-        except Exception as e:
-            print(f"Transcription error: {e}")
-            self.transcribed_text = None
-
-
-    def _on_key_press(self, key):
-        try:
-            if key.char == "c":
-                self._start_recording()
-            elif key.char == "s":
-                self._stop_recording_and_transcribe()
-        except AttributeError:
-            pass
-
-    def _terminal_input_loop(self):
-        print("⌨️ Terminal Input Active: Type a command and press Enter. Type 'exit' to quit.")
-        while True:
-            try:
-                text = input()
-                if text.strip():
-                    if text.strip().lower() == "exit":
-                        self.transcribed_text = "#EXIT"
-                    else:
-                        self.transcribed_text = text.strip()
-            except EOFError:
-                break
-            except Exception as e:
                 print(f"Terminal input error: {e}")
 
     def start_listener(self):
