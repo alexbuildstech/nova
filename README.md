@@ -99,7 +99,7 @@ Leading the way in advanced 3D printing materials. **Polymaker** provides the hi
 A world-leading robotics and open-source hardware provider. **DFRobot** supplies the essential sensors, microcontrollers, and electronic components that power Nova's intelligence.
 
 ### **Radxa**
-Innovators in Single Board Computers (SBCs). **Radxa** provides the powerful computing cores (like the Radxa X4) that drive Nova's AI processing capabilities.
+Innovators in Single Board Computers (SBCs). **Radxa** provides the powerful computing SBC (like rock 5c) that drive Nova's AI processing capabilities.
 
 ---
 
