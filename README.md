@@ -41,7 +41,7 @@ Nova is optimized for the **InMoov** robot head but is compatible with various a
 
 *   **Compute**:
     *   **Recommended**: Linux/Windows PC with NVIDIA GPU.
-    *   **SBCs**: Compatible with **Radxa X4**, **Raspberry Pi 5**, or **NVIDIA Jetson Orin Nano**.
+    *   **SBCs**: Compatible with **Radxa rock 5C**, **Raspberry Pi 5**, or **NVIDIA Jetson Orin Nano**.
 *   **Microcontroller**: Arduino Uno or Mega (for servo control via Serial).
 *   **Vision**: USB Webcam (Logitech C920 recommended).
 *   **Audio**: USB Microphone & Speakers.
