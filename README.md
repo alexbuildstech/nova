@@ -7,7 +7,7 @@
 
 **Nova** is a state-of-the-art, independent software stack designed specifically for the **InMoov** open-source 3D printed robot platform. It transforms static animatronics into fully autonomous, conversational humanoid robots using advanced **Artificial Intelligence**.
 
-Unlike traditional script-based robotics, Nova leverages **Large Language Models (LLMs)** like **OpenAI GPT-OSS-20B** and **Computer Vision** models like **Google Gemini 2.0 Flash Vision** to enable real-time, dynamic interaction. Whether you are running on a high-end PC, an **NVIDIA Jetson**, or a powerful SBC like the **Radxa X4**, Nova provides the intelligence your robot needs.
+Unlike traditional script-based robotics, Nova leverages **Large Language Models (LLMs)** like **OpenAI GPT-OSS-20B** and **Computer Vision** models like **Google Gemini 2.0 Flash Vision** to enable real-time, dynamic interaction. Whether you are running on a high-end PC, an **NVIDIA Jetson**, or a powerful SBC like the **Radxa rock 5C**, Nova provides the intelligence your robot needs.
 
 > **Note:** This project is currently an independent fork and is **not yet integrated with MyRobotLab**, though future compatibility is on our roadmap.
 
