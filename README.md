@@ -38,10 +38,10 @@ This project is proudly supported by industry leaders in making and robotics:
 
 | Component | Product | Use Case | Link |
 |-----------|---------|----------|------|
-| **Main Controller** | DFRduino Mega2560 (×2) | Servo control & sensor processing | [View Product →](https://www.dfrobot.com/product-191.html) |
-| **Gripper Servos** | DSS-P05 Standard Servo 5kg (×2) | Precise gripper finger movement | [View Product →](https://www.dfrobot.com/product-188.html) |
-| **Force Sensors** | Circular Force Sensor 7.6mm (×2) | Tactile feedback for grip pressure | [View Product →](https://www.dfrobot.com/product-2058.html) |
-| **Stereo Vision** | USB Camera 720p Wide-angle (×2) | Depth perception & object recognition | [View Product →](https://www.dfrobot.com/product-2089.html) |
+| **Main Controller** | DFRduino Mega2560 (×2) | Servo control & sensor processing | [View Product →](https://www.dfrobot.com/product-655.html) |
+| **Gripper Servos** | DSS-P05 Standard Servo 5kg (×2) | Precise gripper finger movement | [View Product →](https://www.dfrobot.com/product-236.html) |
+| **Force Sensors** | Circular Force Sensor 7.6mm (×2) | Tactile feedback for grip pressure | [View Product →](https://www.dfrobot.com/product-1841.html) |
+| **Stereo Vision** | USB Camera 720p Wide-angle (×2) | Depth perception & object recognition | [View Product →](https://www.dfrobot.com/product-2537.html) |
 
 ### 💡 Recommended DFRobot Products
 
@@ -49,8 +49,8 @@ For builders looking to expand with arm articulation:
 
 | Component | Product | Torque | Best For | Link |
 |-----------|---------|--------|----------|------|
-| **Arm Joints** | High Torque Waterproof Servo 20kg | 20 kg·cm | Shoulder & wrist rotation | [View Product →](https://www.dfrobot.com/product-2073.html) |
-| **Bicep/Elbow** | High Torque Servo with Encoder 25kg | 25 kg·cm | Arm lifting & elbow bend | [View Product →](https://www.dfrobot.com/product-2301.html) |
+| **Arm Joints** | High Torque Waterproof Servo 20kg | 20 kg·cm | Shoulder & wrist rotation | [View Product →](https://www.dfrobot.com/product-2787.html) |
+| **Bicep/Elbow** | High Torque Servo with Encoder 25kg | 25 kg·cm | Arm lifting & elbow bend | [View Product →](https://www.dfrobot.com/product-2789.html) |
 
 > 💬 *"DFRobot's ecosystem made building Nova's manipulation system possible. Their servo lineup and force sensors are perfect for humanoid robotics."*
 
