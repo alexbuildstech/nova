@@ -9,7 +9,59 @@
 
 Unlike traditional script-based robotics, Nova leverages **Large Language Models (LLMs)** like **OpenAI GPT-OSS-20B** and **Computer Vision** models like **Google Gemini 2.0 Flash Vision** to enable real-time, dynamic interaction. Whether you are running on a high-end PC, an **NVIDIA Jetson**, or a powerful SBC like the **Radxa rock 5C**, Nova provides the intelligence your robot needs.
 
-> **Note:** This project is currently an independent fork and is **not yet integrated with MyRobotLab**, though future compatibility is on our roadmap.
+> 🚀 **Nova** is the next-generation independent AI stack for InMoov, optimized for modern LLMs and cloud-native AI services. Built from the ground up for flexibility and performance.
+
+---
+
+## 🤝 Sponsors & Partners
+
+This project is proudly supported by industry leaders in making and robotics:
+
+<table>
+<tr>
+<td align="center" width="33%">
+<a href="https://www.dfrobot.com">
+<img src="https://dfimg.dfrobot.com/logo.png" alt="DFRobot" width="150"/>
+</a>
+<br><strong>DFRobot</strong>
+<br><em>Robotics & Open-Source Hardware</em>
+</td>
+<td align="center" width="33%">
+<a href="https://polymaker.com">
+<img src="https://cdn.shopify.com/s/files/1/0548/7299/7945/files/Artboard_1_copy_3.svg" alt="Polymaker" width="150"/>
+</a>
+<br><strong>Polymaker</strong>
+<br><em>Advanced 3D Printing Materials</em>
+</td>
+<td align="center" width="33%">
+<a href="https://radxa.com">
+<img src="https://radxa.com/logo.png" alt="Radxa" width="150"/>
+</a>
+<br><strong>Radxa</strong>
+<br><em>High-Performance SBCs</em>
+</td>
+</tr>
+</table>
+
+### 🔧 Key Hardware from DFRobot
+
+| Component | Product | Use Case | Link |
+|-----------|---------|----------|------|
+| **Main Controller** | DFRduino Mega2560 (×2) | Servo control & sensor processing | [View Product →](https://www.dfrobot.com/product-191.html) |
+| **Gripper Servos** | DSS-P05 Standard Servo 5kg (×2) | Precise gripper finger movement | [View Product →](https://www.dfrobot.com/product-188.html) |
+| **Force Sensors** | Circular Force Sensor 7.6mm (×2) | Tactile feedback for grip pressure | [View Product →](https://www.dfrobot.com/product-2058.html) |
+| **Stereo Vision** | USB Camera 720p Wide-angle (×2) | Depth perception & object recognition | [View Product →](https://www.dfrobot.com/product-2089.html) |
+
+### 💡 Recommended DFRobot Products
+
+For builders looking to expand with arm articulation:
+
+| Component | Product | Torque | Best For | Link |
+|-----------|---------|--------|----------|------|
+| **Arm Joints** | High Torque Waterproof Servo 20kg | 20 kg·cm | Shoulder & wrist rotation | [View Product →](https://www.dfrobot.com/product-2073.html) |
+| **Bicep/Elbow** | High Torque Servo with Encoder 25kg | 25 kg·cm | Arm lifting & elbow bend | [View Product →](https://www.dfrobot.com/product-2301.html) |
+
+> 💬 *"DFRobot's ecosystem made building Nova's manipulation system possible. Their servo lineup and force sensors are perfect for humanoid robotics."*
 
 ---
 
@@ -18,7 +70,6 @@ Unlike traditional script-based robotics, Nova leverages **Large Language Models
 - [Hardware Requirements](#-hardware-requirements)
 - [Installation](#-installation)
 - [Configuration](#-configuration)
-- [Sponsors](#-sponsors)
 - [Roadmap](#-roadmap)
 - [License](#-license)
 
@@ -85,21 +136,6 @@ GROQ_API_KEY = "your_key_here"
 CAMERA_INDEX = 0  # 0 for default webcam
 SERIAL_PORT = "/dev/ttyACM0"  # or 'COM3' on Windows
 ```
-
----
-
-## 🤝 Sponsors
-
-We are proud to be supported by industry leaders in making and robotics:
-
-### **Polymaker**
-Leading the way in advanced 3D printing materials. **Polymaker** provides the high-quality PLA and specialized filaments that bring Nova's physical form to life.
-
-### **DFRobot**
-A world-leading robotics and open-source hardware provider. **DFRobot** supplies the essential sensors, microcontrollers, and electronic components that power Nova's intelligence.
-
-### **Radxa**
-Innovators in Single Board Computers (SBCs). **Radxa** provides the powerful computing SBC (like rock 5c) that drive Nova's AI processing capabilities.
 
 ---
 
