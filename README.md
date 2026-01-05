@@ -5,6 +5,9 @@
 ![Status](https://img.shields.io/badge/Status-Active-brightgreen.svg)
 ![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows-lightgrey.svg)
 
+### 🏆 Recognition
+"Winner of 1st Place at the Sci-Blast 3.0 and 2.0 Fair (St. Xavier's College) – Showcased to 1,700+ attendees."
+
 **Nova** is a state-of-the-art, independent software stack designed specifically for the **InMoov** open-source 3D printed robot platform. It transforms static animatronics into fully autonomous, conversational humanoid robots using advanced **Artificial Intelligence**.
 
 Unlike traditional script-based robotics, Nova leverages **Large Language Models (LLMs)** like **OpenAI GPT-OSS-20B** and **Computer Vision** models like **Google Gemini 2.0 Flash Vision** to enable real-time, dynamic interaction. Whether you are running on a high-end PC, an **NVIDIA Jetson**, or a powerful SBC like the **Radxa rock 5C**, Nova provides the intelligence your robot needs.
