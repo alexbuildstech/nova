@@ -20,25 +20,16 @@ This project is proudly supported by industry leaders in making and robotics:
 <table>
 <tr>
 <td align="center" width="33%">
-<a href="https://www.dfrobot.com">
-<img src="https://dfimg.dfrobot.com/logo.png" alt="DFRobot" width="150"/>
-</a>
-<br><strong>DFRobot</strong>
-<br><em>Robotics & Open-Source Hardware</em>
+<h3><a href="https://www.dfrobot.com">🤖 DFRobot</a></h3>
+<em>Robotics & Open-Source Hardware</em>
 </td>
 <td align="center" width="33%">
-<a href="https://polymaker.com">
-<img src="https://cdn.shopify.com/s/files/1/0548/7299/7945/files/Artboard_1_copy_3.svg" alt="Polymaker" width="150"/>
-</a>
-<br><strong>Polymaker</strong>
-<br><em>Advanced 3D Printing Materials</em>
+<h3><a href="https://polymaker.com">🎨 Polymaker</a></h3>
+<em>Advanced 3D Printing Materials</em>
 </td>
 <td align="center" width="33%">
-<a href="https://radxa.com">
-<img src="https://radxa.com/logo.png" alt="Radxa" width="150"/>
-</a>
-<br><strong>Radxa</strong>
-<br><em>High-Performance SBCs</em>
+<h3><a href="https://radxa.com">💻 Radxa</a></h3>
+<em>High-Performance SBCs</em>
 </td>
 </tr>
 </table>
