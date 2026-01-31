@@ -1,148 +1,109 @@
-# Nova - Open Source AI Robot Software for InMoov
+# Nova: An Integrated AI Stack for InMoov Humanoids
 
-![Python](https://img.shields.io/badge/Python-3.12-blue.svg)
-![License](https://img.shields.io/badge/License-MIT-green.svg)
-![Status](https://img.shields.io/badge/Status-Active-brightgreen.svg)
-![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows-lightgrey.svg)
+Nova is an experimental software framework designed to bridge multi-modal Large Language Models (LLMs) with the **InMoov** open-source robotics platform. Rather than a "fully autonomous" system, Nova is an integration layer that explores interactive robotics through cloud-mediated perception and low-latency reasoning.
 
-**Nova** is a state-of-the-art, independent software stack designed specifically for the **InMoov** open-source 3D printed robot platform. It transforms static animatronics into fully autonomous, conversational humanoid robots using advanced **Artificial Intelligence**.
-
-Unlike traditional script-based robotics, Nova leverages **Large Language Models (LLMs)** like **OpenAI GPT-OSS-20B** and **Computer Vision** models like **Google Gemini 2.0 Flash Vision** to enable real-time, dynamic interaction. Whether you are running on a high-end PC, an **NVIDIA Jetson**, or a powerful SBC like the **Radxa rock 5C**, Nova provides the intelligence your robot needs.
-
-> 🚀 **Nova** is the next-generation independent AI stack for InMoov, optimized for modern LLMs and cloud-native AI services. Built from the ground up for flexibility and performance.
+> [!NOTE]
+> This project is a technical experiment in robotics integration. It is subject to network latency, mechanical variance, and the probabilistic nature of LLMs.
 
 ---
 
-## 🤝 Sponsors & Partners
+## 🏗️ System Architecture
 
-This project is proudly supported by industry leaders in making and robotics:
+Nova operates across three primary domains: **Physical Control**, **Real-time Perception**, and **Cognitive Orchestration**. These domains are synchronized through a multi-threaded Python core.
 
-<table>
-<tr>
-<td align="center" width="33%">
-<h3><a href="https://www.dfrobot.com">🤖 DFRobot</a></h3>
-<em>Robotics & Open-Source Hardware</em>
-</td>
-<td align="center" width="33%">
-<h3><a href="https://polymaker.com">🎨 Polymaker</a></h3>
-<em>Advanced 3D Printing Materials</em>
-</td>
-<td align="center" width="33%">
-<h3><a href="https://radxa.com">💻 Radxa</a></h3>
-<em>High-Performance SBCs</em>
-</td>
-</tr>
-</table>
+### Architecture Overview
+```mermaid
+graph TD
+    subgraph "Perception Layer"
+        V["USB Camera"] --> FT["FaceTracker Thread (OpenCV SSD)"]
+        FT --> PC["PID Controller"]
+        FT --> VC["Visual Context Buffer (Gemini Flash)"]
+    end
 
-### 🔧 Key Hardware from DFRobot
+    subgraph "Cognitive Layer"
+        U["Voice Input"] --> STT["Groq Whisper-Turbo"]
+        STT --> ORC["LLM Orchestrator (GPT-OSS-20B)"]
+        ORC --> NLU["NLU Pattern Matcher"]
+        NLU --> SA["Search Engine / Vision Analysis"]
+    end
 
-| Component | Product | Use Case | Link |
-|-----------|---------|----------|------|
-| **Main Controller** | DFRduino Mega2560 (×2) | Servo control & sensor processing | [View Product →](https://www.dfrobot.com/product-655.html) |
-| **Gripper Servos** | DSS-P05 Standard Servo 5kg (×2) | Precise gripper finger movement | [View Product →](https://www.dfrobot.com/product-236.html) |
-| **Force Sensors** | Circular Force Sensor 7.6mm (×2) | Tactile feedback for grip pressure | [View Product →](https://www.dfrobot.com/product-1841.html) |
-| **Stereo Vision** | USB Camera 720p Wide-angle (×2) | Depth perception & object recognition | [View Product →](https://www.dfrobot.com/product-2537.html) |
+    subgraph "Execution Layer"
+        ORC --> TTS["Edge-TTS Pipeline"]
+        ORC --> JM["Jaw/Neck Serial Commands"]
+        PC --> NC["Neck Servo (Serial)"]
+        TTS --> BUFF["Audio Sentence Buffer"]
+    end
 
-### 💡 Recommended DFRobot Products
-
-For builders looking to expand with arm articulation:
-
-| Component | Product | Torque | Best For | Link |
-|-----------|---------|--------|----------|------|
-| **Arm Joints** | High Torque Waterproof Servo 20kg | 20 kg·cm | Shoulder & wrist rotation | [View Product →](https://www.dfrobot.com/product-2787.html) |
-| **Bicep/Elbow** | High Torque Servo with Encoder 25kg | 25 kg·cm | Arm lifting & elbow bend | [View Product →](https://www.dfrobot.com/product-2789.html) |
-
-> 💬 *"DFRobot's ecosystem made building Nova's manipulation system possible. Their servo lineup and force sensors are perfect for humanoid robotics."*
-
----
-
-## 📑 Table of Contents
-- [Key Features](#-key-features)
-- [Hardware Requirements](#-hardware-requirements)
-- [Installation](#-installation)
-- [Configuration](#-configuration)
-- [Roadmap](#-roadmap)
-- [License](#-license)
-
----
-
-## 🚀 Key Features
-
-*   **🧠 Advanced LLM Integration**: Powered by **OpenAI GPT-OSS-20B** (via Groq) for ultra-low latency, human-like conversation.
-*   **👁️ Computer Vision & Perception**: Uses **Google Gemini 2.0 Flash Vision** to analyze the visual world, describe objects, and read text in real-time.
-*   **🌐 Real-Time Internet Access**: Integrated **Google Search** allows Nova to answer questions about current events, weather, and news.
-*   **🤖 Autonomous Face Tracking**: PID-controlled servo tracking ensures Nova maintains eye contact, creating a "living" presence.
-*   **🗣️ Natural Voice Interaction**: Features high-fidelity **Speech-to-Text (STT)** and **Text-to-Speech (TTS)** for seamless verbal communication.
-*   **💻 Web Control Dashboard**: A local web interface for easy monitoring, debugging, and control.
-
----
-
-## 🛠️ Hardware Requirements
-
-Nova is optimized for the **InMoov** robot head but is compatible with various animatronic setups.
-
-*   **Compute**:
-    *   **Recommended**: Linux/Windows PC with NVIDIA GPU.
-    *   **SBCs**: Compatible with **Radxa rock 5C**, **Raspberry Pi 5**, or **NVIDIA Jetson Orin Nano**.
-*   **Microcontroller**: Arduino Uno or Mega (for servo control via Serial).
-*   **Vision**: USB Webcam (Logitech C920 recommended).
-*   **Audio**: USB Microphone & Speakers.
-*   **Mechanics**: Standard Hobby Servos (MG996R/SG90) for InMoov neck and eye mechanisms.
-
----
-
-## 📦 Installation
-
-1.  **Clone the Repository**
-    ```bash
-    git clone https://github.com/alexbuildstech/nova.git
-    cd nova
-    ```
-
-2.  **Install Python Dependencies**
-    ```bash
-    pip install -r requirements.txt
-    ```
-
-3.  **System Setup**
-    Ensure you have `ffmpeg` installed for audio processing:
-    ```bash
-    sudo apt install ffmpeg  # Linux
-    # or download for Windows
-    ```
-
----
-
-## ⚙️ Configuration
-
-Nova uses a central configuration file for security and ease of use.
-
-1.  Open `config.py`.
-2.  **API Keys**: Enter your **Groq API Key** and **Google Gemini API Key**.
-3.  **Hardware**: Set your `CAMERA_INDEX` and `SERIAL_PORT`.
-
-```python
-# config.py example
-GROQ_API_KEY = "your_key_here"
-CAMERA_INDEX = 0  # 0 for default webcam
-SERIAL_PORT = "/dev/ttyACM0"  # or 'COM3' on Windows
+    SA --> ORC
+    VC --> SA
+    BUFF --> AS["Audio Output"]
 ```
 
----
-
-## 🔮 Roadmap
-
-*   **MyRobotLab Integration**: Full plugin support for the MyRobotLab ecosystem.
-*   **Gesture Control**: Hand tracking and arm movement synchronization for InMoov arms.
-*   **Local LLM Support**: Offline inference using **Llama 3** via Ollama.
-*   **Emotion Engine**: Dynamic facial expression mapping based on sentiment analysis.
+### Key Components
+- **`FaceTracker` (Threaded)**: Employs a Caffe-based SSD detector to maintain low-latency gaze tracking. PID loops calculate servo trajectories to minimize jitter.
+- **`Animatronic` Module**: Manages the serial ACK/NAK flow control protocol with Arduino Mega. It synchronized Edge-TTS audio streams with heuristic jaw movements.
+- **`LLM Orchestrator`**: Routes prompts through Groq (for conversation) and Gemini 2.0 Flash (for visual reasoning). It uses regex-based NLU to trigger functional calls like `#VISUAL` or `#SEARCH`.
 
 ---
 
-## 📄 License
+## 🛠️ Technical Design & Rationale
 
-This project is open-source and available under the **MIT License**.
+| Choice | Rationale | Trade-off |
+| :--- | :--- | :--- |
+| **Groq (Llama-3/20B)** | Chosen for <500ms TTFT (Time To First Token) to maintain conversational flow. | Dependency on cloud infrastructure and API availability. |
+| **Gemini 2.0 Flash** | Native multi-modal support allows for direct image-to-text analysis without separate captioning models. | Higher latency than local vision; requires active internet connection. |
+| **Edge-TTS** | High-fidelity neural voices without the overhead of local WaveNet models. | Slightly higher latency than simple eSpeak; requires internet. |
+| **PID Gaze Control** | Prevents aggressive servo "hunting" and provides smoother humanoid-like motion. | Requires manual tuning for different servo hardware. |
 
 ---
 
-*Keywords: InMoov, AI Robot, Python, LLM, Computer Vision, OpenAI, Gemini, Robotics, Animatronics, Open Source, Artificial Intelligence, Face Tracking, Voice Assistant, Radxa, Polymaker, DFRobot, MyRobotLab, Raspberry Pi, NVIDIA Jetson.*
+## ⚠️ Known Limitations & Failure Modes
+
+Robotics at this scale is inherently prone to failure. Nova acknowledges the following:
+
+- **Network Latency**: While Groq is fast, the total loop (STT -> LLM -> TTS) still introduces 1.5s-3s of delay, which can break the illusion of real-time presence.
+- **Perception Blindspots**: The SSD face detector struggles in low-light environments and can lose tracking if the user moves outside of a 60° FOV.
+- **Servo Saturation**: Standard hobby servos (MG996R) have significant deadbands and gear backlash, leading to occasional mechanical jitter.
+- **Context Drift**: The current short-term memory is limited by token windows; long-term memory use `long_term_memory_converter()` but is still experimental.
+
+---
+
+## 📦 Getting Started
+
+### Prerequisites
+- **Hardware**: InMoov Head/Neck assembly, Arduino Mega, USB Webcam, Microphone.
+- **Software**: Python 3.12+, `ffmpeg`, Groq & Google Generative AI API Keys.
+
+### Installation
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/alexbuildstech/nova.git
+   cd nova
+   ```
+2. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+3. Configure your environment:
+   Edit `config.py` with your API keys and hardware ports.
+
+---
+
+## 🧬 Iteration & Reflection
+
+Nova started as a simple local script using `vosk` and `ollama`, but transitioned to a cloud-hybrid stack to achieve the speed required for humanoid interaction. The biggest challenge was not the AI itself, but the **synchronization of physical movement with synthetic voice**.
+
+Future iterations aim to move the vision loop to local Jetson-based inference to reduce dependency on the Gemini API for basic object presence.
+
+---
+
+## 🤝 Partners & Acknowledgments
+
+This research is supported by components from:
+- **DFRobot**: High-torque servos and Mega2560 controllers.
+- **Polymaker**: PLA+ materials used for structural robot integrity.
+- **Radxa**: Compute testing on the Rock 5C platform.
+
+---
+
+*Keywords: Robotics, Humanoid, LLM Integration, Computer Vision, InMoov, OpenCV, PID Control, Edge-TTS, Groq, Gemini.*
