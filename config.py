@@ -22,6 +22,8 @@ BAUD_RATE = 9600
 MIC_SAMPLE_RATE = 16000
 MIC_CHANNELS = 1
 MIC_CHUNK_SIZE = 1024
+STT_ENERGY_THRESHOLD = 500  # Voice activity threshold
+STT_SILENCE_DURATION = 1.0  # Silence duration in seconds before stopping
 
 # --- FACE TRACKING CONFIGURATION ---
 # Servo Angles (Degrees)

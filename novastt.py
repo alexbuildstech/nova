@@ -1,115 +1,140 @@
 #!/usr/bin/env python3
 import sounddevice as sd
-from pynput import keyboard
 import numpy as np
 import io
 import wave
 import os
-from groq import Groq
+import time
 import threading
+from groq import Groq
 import config
-
 
 class SpeechToText:
     """
-    STT class with c/s keys: start/stop, transcription stored in a variable.
+    Nova STT: Automatic Voice Activity Detection (VAD) using energy thresholds.
+    Eliminates the need for manual keyboard toggles.
     """
 
-    GROQ_API_KEY = config.GROQ_API_KEY
-    SAMPLERATE = config.MIC_SAMPLE_RATE
-    CHANNELS = config.MIC_CHANNELS
-    CHUNK = config.MIC_CHUNK_SIZE
-    DTYPE = "int16"
-
     def __init__(self, on_record_start=None):
-        self.is_recording = False
-        self.stream = None
-        self.wave_file = None
-        self.audio_buffer = None
-        self.listener = None
-        self.transcribed_text = None  # <-- store transcription here
         self.client = self._initialize_groq_client()
-        self.on_record_start = on_record_start # Callback for when 'c' is pressed
+        self.on_record_start = on_record_start
+        self.transcribed_text = None
+        self.is_running = True
+        
+        # Audio Settings
+        self.samplerate = config.MIC_SAMPLE_RATE
+        self.channels = config.MIC_CHANNELS
+        self.threshold = config.STT_ENERGY_THRESHOLD
+        self.silence_limit = config.STT_SILENCE_DURATION
+        
+        # Buffers
+        self.audio_data = []
+        self.is_recording = False
+        self.silence_start = None
 
     def _initialize_groq_client(self):
-        if not self.GROQ_API_KEY or self.GROQ_API_KEY == "YOUR_GROQ_API_KEY":
-            print("Error: GROQ_API_KEY not set")
-            return None
         try:
-            client = Groq(api_key=self.GROQ_API_KEY)
-            client.models.list()
-            print("✅ Groq client initialized")
+            client = Groq(api_key=config.GROQ_API_KEY)
             return client
         except Exception as e:
-            print(f"Error initializing Groq client: {e}")
+            print(f"❌ Groq Init Error: {e}")
             return None
 
-    def _start_recording(self):
-        if self.is_recording:
-            print("Already recording")
-            return
-        self.is_recording = True
-        print("▶️ Recording started (press 's' to stop)")
-        
-        # Trigger callback if registered (e.g., to capture image)
-        if self.on_record_start:
-            self.on_record_start()
-            
-        print("\n🎙️ Audio Capture Active...")
-        frames = []
-        
-        # Open audio stream
-        with self.microphone as source:
-            # Dynamic ambient noise adjustment
-            self.recognizer.adjust_for_ambient_noise(source, duration=0.5)
-            
-            while self.is_recording:
-                try:
-                    audio_chunk = source.stream.read(config.MIC_CHUNK_SIZE)
-                    frames.append(audio_chunk)
-                except Exception as e:
-                    print(f"⚠️ Audio Stream Error: {e}")
-                    break
-        
-        print("⏹️ Audio Capture Complete. Processing...")
-        
-        # Convert raw PCM data to AudioData object
-        audio_data = sr.AudioData(b''.join(frames), source.SAMPLE_RATE, source.SAMPLE_WIDTH)
-        return audio_data
+    def _get_energy(self, audio_chunk):
+        """Calculates the RMS energy of an audio chunk."""
+        return np.sqrt(np.mean(audio_chunk**2))
 
-    def transcribe_audio(self, audio_data):
-        """
-        Transcribes captured audio using the Groq Whisper API.
-        Delivers near-instantaneous text conversion for fluid conversation.
-        """
-        try:
-            # Save temporary buffer for API transmission
-            temp_filename = "temp_speech.mp3"
-            with open(temp_filename, "wb") as f:
-                f.write(audio_data.get_wav_data())
+    def _audio_callback(self, indata, frames, time_info, status):
+        """Processes incoming audio chunks for VAD."""
+        if status:
+            print(f"⚠️ Audio Status: {status}")
             
-            with open(temp_filename, "rb") as file:
-                transcription = self.client.audio.transcriptions.create(
-                    file=(temp_filename, file.read()),
-                    model="whisper-large-v3-turbo",
-                    response_format="json",
-                    language="en",
-                    temperature=0.0
-                )
+        energy = self._get_energy(indata)
+        
+        if energy > self.threshold:
+            if not self.is_recording:
+                print("🎙️ Voice Detected. Recording...")
+                self.is_recording = True
+                if self.on_record_start:
+                    self.on_record_start()
+            
+            self.audio_data.append(indata.copy())
+            self.silence_start = None
+        elif self.is_recording:
+            # Continue recording brief silence to avoid clipping
+            self.audio_data.append(indata.copy())
+            
+            if self.silence_start is None:
+                self.silence_start = time.time()
+            elif time.time() - self.silence_start > self.silence_limit:
+                print("⏹️ Silence Detected. Processing...")
+                self.is_recording = False
+                self._process_recording()
+
+    def _process_recording(self):
+        """Converts buffer to WAV and sends to Groq."""
+        if not self.audio_data:
+            return
+
+        recording = np.concatenate(self.audio_data)
+        self.audio_data = [] # Reset buffer
+        
+        # Convert to 16-bit PCM
+        recording_int = (recording * 32767).astype(np.int16)
+        
+        buffer = io.BytesIO()
+        with wave.open(buffer, 'wb') as wf:
+            wf.setnchannels(self.channels)
+            wf.setsampwidth(2) # 16-bit
+            wf.setframerate(self.samplerate)
+            wf.writeframes(recording_int.tobytes())
+        
+        buffer.seek(0)
+        threading.Thread(target=self._transcribe, args=(buffer,), daemon=True).start()
+
+    def _transcribe(self, audio_buffer):
+        """Transcribes audio using Groq Whisper API."""
+        try:
+            transcription = self.client.audio.transcriptions.create(
+                file=("speech.wav", audio_buffer),
+                model="whisper-large-v3-turbo",
+                response_format="json",
+                language="en",
+                temperature=0.0
+            )
             
             text = transcription.text.strip()
-                print(f"Terminal input error: {e}")
+            if text:
+                print(f"📝 Transcribed: \"{text}\"")
+                self.transcribed_text = text
+        except Exception as e:
+            print(f"❌ Transcription Error: {e}")
 
     def start_listener(self):
+        """Starts the non-blocking background audio monitor."""
         if not self.client:
-            print("Groq client not initialized")
             return
-        print("\n--- STT ready --- Press 'c' to record, 's' to stop ---\n")
-        
-        # Start keyboard listener
-        self.listener = keyboard.Listener(on_press=self._on_key_press)
-        self.listener.start()
-        
-        # Start terminal input thread
-        threading.Thread(target=self._terminal_input_loop, daemon=True).start()
 
+        print(f"✅ STT Listener Active (Threshold: {self.threshold})")
+        
+        # Start the sounddevice stream
+        stream = sd.InputStream(
+            samplerate=self.samplerate,
+            channels=self.channels,
+            callback=self._audio_callback,
+            blocksize=int(self.samplerate * 0.1) # 100ms chunks
+        )
+        stream.start()
+        
+        # Keep the thread alive if needed, or rely on main thread
+        # In Nova, novamain.py keeps the process alive.
+
+if __name__ == "__main__":
+    # Test block
+    stt = SpeechToText()
+    stt.start_listener()
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("\nStopping...")

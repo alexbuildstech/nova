@@ -2,10 +2,20 @@
 
 Nova is an experimental software framework designed to bridge multi-modal Large Language Models (LLMs) with the **InMoov** open-source robotics platform. Rather than a "fully autonomous" system, Nova is an integration layer that explores interactive robotics through cloud-mediated perception and low-latency reasoning.
 
-> [!NOTE]
-> This project is a technical experiment in robotics integration. It is subject to network latency, mechanical variance, and the probabilistic nature of LLMs.
+---
+
+## 🤝 Partners & Acknowledgments
+
+This research is made possible through the support of industry partners providing the core infrastructure for Nova:
+
+- **[Radxa](https://radxa.com)**: Provided the **ROCK 5C** high-performance SBC, serving as the primary compute node for local vision processing and serial orchestration.
+- **[DFRobot](https://www.dfrobot.com)**: Provided the electronic ecosystem, including high-torque servos for articulation and **Mega2560** controllers for hardware-level interface.
+- **[Polymaker](https://polymaker.com)**: Provided advanced **PLA+** filaments, ensuring the structural integrity and durability of the 3D-printed humanoid frame.
 
 ---
+
+> [!NOTE]
+> This project is a technical experiment in robotics integration. It is subject to network latency, mechanical variance, and the probabilistic nature of LLMs.
 
 ## 🏗️ System Architecture
 
@@ -94,15 +104,6 @@ Robotics at this scale is inherently prone to failure. Nova acknowledges the fol
 Nova started as a simple local script using `vosk` and `ollama`, but transitioned to a cloud-hybrid stack to achieve the speed required for humanoid interaction. The biggest challenge was not the AI itself, but the **synchronization of physical movement with synthetic voice**.
 
 Future iterations aim to move the vision loop to local Jetson-based inference to reduce dependency on the Gemini API for basic object presence.
-
----
-
-## 🤝 Partners & Acknowledgments
-
-This research is supported by components from:
-- **DFRobot**: High-torque servos and Mega2560 controllers.
-- **Polymaker**: PLA+ materials used for structural robot integrity.
-- **Radxa**: Compute testing on the Rock 5C platform.
 
 ---
 
