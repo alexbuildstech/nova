@@ -10,16 +10,19 @@ import serial
 import serial.tools.list_ports
 import random
 import re
+import asyncio
+import math  # For breathing rhythm calculations
 from pynput import keyboard
 from edge_tts import Communicate
 from pydub import AudioSegment
 from pydub.utils import make_chunks
+import config
 
 class Animatronic:
     """
-    This version adds an interactive feature: pressing the 'L' key during speech
-    will send a command to center the neck without interrupting anything.
-    It retains the direct connection and robust ACK flow control.
+    Enhanced animatronic controller with natural interruptions and unscripted movements.
+    Features: Edge-case protected interruptions, random spontaneous movements, 
+    debounced input handling, and graceful recovery mechanisms.
     """
 
     # --- Configuration (Synced with Arduino Code) ---
@@ -42,163 +45,244 @@ class Animatronic:
         self._is_speaking = threading.Event()
         self._audio_started = threading.Event()
         self._interrupted = threading.Event()  # Flag to signal full interruption
+        self._emergency_interrupted = threading.Event()  # Emergency stop flag
         self._player_command = self._get_player_command()
         self._specified_port = specified_port
+        
+        # Interruption handling state
+        self._last_interrupt_time = 0
+        self._interrupt_debounce_ms = 300
 
     def queue_command(self, priority, command_str):
-        """
-        Allows external modules (like FaceTracker) to queue commands for the Arduino.
-        priority: 1 (High/Speech), 2 (Low/Idle), etc.
-        command_str: The command string (e.g., "neck 90")
-        """
+        """Allows external modules (like FaceTracker) to queue commands for the Arduino."""
         self._command_queue.put((priority, command_str))
 
-    def _open_port(self, device):
-        """Attempt to open a specific serial device."""
-        try:
-            ser = serial.Serial(device, self.BAUD_RATE, timeout=1, write_timeout=1)
-            print(f"✅ Port {device} opened successfully (manual selection).")
-            time.sleep(2)  # Wait for Arduino reset
-            return ser
-        except (serial.SerialException, FileNotFoundError) as e:
-            print(f"⚠️ Failed to open specified port {device}: {e}")
-            return None
-
     def _find_arduino_port(self):
-        """Connects to the first available serial port that doesn't throw an error, unless a specific port is set."""
-        if self._specified_port:
-            ser = self._open_port(self._specified_port)
-            if ser:
-                return ser
-            # fall back to scanning if manual port failed
+        """Automatically detects Arduino by searching for common USB vendor IDs."""
+        arduino_vids = {'2341', '2A03', '1A86', '10C4', '16C0', '03EB', '1366', '0483'}
         ports = serial.tools.list_ports.comports()
+        
         for port in ports:
-            try:
-                ser = serial.Serial(port.device, self.BAUD_RATE, timeout=1, write_timeout=1)
-                print(f"✅ Port {port.device} opened successfully. Assuming it's the Animatronic.")
-                time.sleep(2)  # IMPORTANT: Wait for the Arduino to reset
-                return ser
-            except (serial.SerialException, FileNotFoundError):
-                continue
-        print("❌ No working Arduino ports found. Please check connection.")
+            if port.vid is not None:
+                vid_hex = f"{port.vid:04X}"
+                if vid_hex in arduino_vids:
+                    print(f"✅ Arduino detected on port: {port.device} ({port.description})")
+                    return port.device
         return None
 
-    def _get_player_command(self):
-        if shutil.which("mpv"):
-            return [
-                "mpv",
-                "--no-terminal",
-                "--audio-buffer=0.2",
-                "-"
-            ]
-        elif shutil.which("ffplay"): 
-            return [
-                "ffplay", 
-                "-nodisp", 
-                "-autoexit", 
-                "-loglevel", "warning", 
-                "-fflags", "nobuffer", 
-                "-infbuf",
-                "-probesize", "32768", 
-                "-i", "-"
-            ]
-        elif shutil.which("mpg123"): return ["mpg123", "-q", "--buffer", "4096", "-"]
-        else: raise RuntimeError("Install mpv, ffmpeg or mpg123 for audio playback.")
+    def initialise(self, port_path=None):
+        """Initializes serial connection and starts all worker threads."""
+        print("--- Initializing Animatronic Control ---")
+        
+        # Determine port
+        final_port = None
+        if port_path:
+            final_port = port_path
+        elif self._specified_port:
+            final_port = self._specified_port
+        else:
+            final_port = self._find_arduino_port()
+
+        if final_port:
+            try:
+                self._serial_port = serial.Serial(final_port, self.BAUD_RATE, timeout=2)
+                print(f"✅ Serial connection established: {final_port}")
+                time.sleep(2)  # Arduino reset delay
+                self._serial_port.reset_input_buffer()
+                print("🛑 Send 'STOP' to halt, 'L' for center neck.")
+            except serial.SerialException as e:
+                print(f"❌ Serial error: {e}. Running in AUDIO-ONLY mode.")
+                self._serial_port = None
+        else:
+            print("⚠️ No Arduino found. Running in AUDIO-ONLY mode.")
+        
+        self._stop_threads.clear()
+        threading.Thread(target=self._serial_worker, daemon=True).start()
+        threading.Thread(target=self._jaw_movement_generator, daemon=True).start()
+        threading.Thread(target=self._eye_movement_generator, daemon=True).start()
+        threading.Thread(target=self._random_movement_generator, daemon=True).start()
+        # Subconscious micro-movement threads for "alive" feeling
+        threading.Thread(target=self._micro_saccade_generator, daemon=True).start()
+        threading.Thread(target=self._breathing_rhythm_generator, daemon=True).start()
+        threading.Thread(target=self._subconscious_twitch_generator, daemon=True).start()
+        threading.Thread(target=self._natural_blink_generator, daemon=True).start()
+        threading.Thread(target=self._idle_drift_generator, daemon=True).start()
+        threading.Thread(target=self._attention_decay_generator, daemon=True).start()
+        threading.Thread(target=self._emotional_micro_expression_generator, daemon=True).start()
+        print("✅ Subconscious micro-movement threads started (7 systems: micro-saccades, breathing, twitches, blinking, drift, attention, emotions)")
+        return True
+
+    def _serial_worker(self):
+        """Optimized serial worker with command batching."""
+        print("Optimized serial worker with batching started.")
+        command_batch = []
+        last_batch_time = time.time()
+        batch_timeout = 0.016  # 16ms batching window
+        
+        while not self._stop_threads.is_set():
+            try:
+                priority, command_str = self._command_queue.get(timeout=1)
+                
+                if command_str.startswith(("x", "y", "z")):  # Servo commands can be batched
+                    command_batch.append((priority, command_str))
+                else:
+                    # Send any pending batch first
+                    if command_batch:
+                        self._flush_command_batch(command_batch)
+                        command_batch = []
+                    
+                    # Send urgent command immediately
+                    if self._serial_port and self._serial_port.is_open:
+                        command = f"{command_str}\n".encode('utf-8')
+                        self._serial_port.write(command)
+                        ack = self._serial_port.readline().decode('utf-8').strip()
+                
+                # Flush batch if timeout reached or batch is full
+                current_time = time.time()
+                if command_batch and (current_time - last_batch_time > batch_timeout or len(command_batch) >= 5):
+                    self._flush_command_batch(command_batch)
+                    command_batch = []
+                    last_batch_time = current_time
+                    
+            except queue.Empty:
+                # Flush any remaining commands on timeout
+                if command_batch:
+                    self._flush_command_batch(command_batch)
+                    command_batch = []
+                continue
+            except Exception as e:
+                print(f"Serial worker error: {e}")
+                command_batch = []  # Clear batch on error
+
+    def _flush_command_batch(self, command_batch):
+        """Flush accumulated servo commands as a single batch."""
+        if not command_batch or not self._serial_port or not self._serial_port.is_open:
+            return
+            
+        # Sort by priority and create batch string
+        command_batch.sort(key=lambda x: x[0])
+        batch_string = "".join(f"{cmd}\n" for _, cmd in command_batch)
+        
+        try:
+            self._serial_port.write(batch_string.encode('utf-8'))
+            # Read single ACK for batch
+            ack = self._serial_port.readline().decode('utf-8').strip()
+            if ack != 'ACK':
+                print(f"Batch ACK error: {ack}")
+        except Exception as e:
+            print(f"Batch flush error: {e}")
 
     def _start_interrupt_listener(self):
-        """
-        Starts a keyboard listener for the 'p' (interrupt) and 'l' (neck center) keys.
-        """
+        """Enhanced interruption handler with edge case protection and debouncing."""
         def on_press(key):
             try:
-                # --- FEATURE: Interrupt Speech ---
-                if key.char == 'p':
-                    print("\n🛑 'p' pressed. Stopping audio.")
-                    if self._player_process: self._player_process.terminate()
-                    return False # Stops the listener
+                current_time = time.time() * 1000
+                
+                # Check debounce for regular interrupts
+                if current_time - self._last_interrupt_time < self._interrupt_debounce_ms:
+                    return None
+                
+                # Priority 1: Emergency stop (esc key)
+                if hasattr(key, 'name') and key.name == 'esc':
+                    print("\n🛑 EMERGENCY STOP - Immediately halting all operations")
+                    self._emergency_interrupted.set()
+                    self._interrupted.set()
+                    if self._player_process: 
+                        try:
+                            self._player_process.kill()
+                        except:
+                            pass
+                    # Reset to neutral position
+                    self._command_queue.put((1, "x 85"))
+                    self._command_queue.put((1, "z 120"))
+                    self._command_queue.put((1, f"jaw {self.JAW_CLOSE_ANGLE}"))
+                    return False
+                
+                # Priority 2: Conversation interrupt (space/p)
+                if hasattr(key, 'char') and key.char in ['p', ' ']:
+                    if self._is_speaking.is_set():
+                        self._last_interrupt_time = current_time
+                        print("\n🗣️ Conversation interrupted. Listening to user...")
+                        self._interrupted.set()
+                        
+                        # Safe termination with timeout
+                        if self._player_process: 
+                            try:
+                                self._player_process.terminate()
+                                time.sleep(0.1)
+                                if self._player_process.poll() is None:
+                                    self._player_process.kill()
+                            except Exception as e:
+                                print(f"Interrupt error (handled): {e}")
+                        
+                        # Quick attention shift gesture
+                        self._command_queue.put((1, "x 85"))
+                        self._command_queue.put((1, "z 120"))
+                        # Blink to show acknowledgment
+                        self._command_queue.put((1, "blink 1"))
+                    return None
 
-                # --- NEW FEATURE: Center Neck ---
-                elif key.char == 'l':
-                    print("\n▶️ 'l' pressed. Centering neck.")
-                    # Add the command to the low-priority queue. Does not interrupt anything.
-                    self._command_queue.put((2, "neck 70"))
-                elif key.char == 'o':
-                    print("\n▶️ 'o' pressed. Centering neck.")
-                    # Add the command to the low-priority queue. Does not interrupt anything.
-                    self._command_queue.put((2, "neck 120"))
+                # Conversation gestures with debouncing
+                if hasattr(key, 'char'):
+                    if key.char == 'l':
+                        print("\n👀 Looking at you...")
+                        self._command_queue.put((1, "x 85"))
+                        self._command_queue.put((1, "z 120"))
+                        self._command_queue.put((1, "y 88"))
+                        
+                    elif key.char == 'n':
+                        print("\n🤔 Pondering...")
+                        self._command_queue.put((1, "x 95"))
+                        self._command_queue.put((1, "z 100"))
+                        self._command_queue.put((1, "jaw 40"))
+                        
+                    elif key.char == 'y':
+                        print("\n😊 Acknowledging...")
+                        self._command_queue.put((1, "y 85"))
+                        time.sleep(0.1)
+                        self._command_queue.put((1, "y 88"))
+                        self._command_queue.put((1, "x 80"))
+                        self._command_queue.put((1, "z 115"))
+                        
+                    elif key.char == 'u':
+                        print("\n🤷 Uncertain...")
+                        self._command_queue.put((1, "x 95"))
+                        self._command_queue.put((1, "z 140"))
+                        self._command_queue.put((1, "y 92"))
 
             except AttributeError:
-                # This handles special keys (Shift, Ctrl, etc.) which don't have a 'char' attribute
                 pass
+            except Exception as e:
+                print(f"Key handler error: {e}")
+            
+            return None
 
         self._key_listener = keyboard.Listener(on_press=on_press)
         self._key_listener.start()
 
     def _stop_interrupt_listener(self):
-        if self._key_listener: self._key_listener.stop()
-
-    def _serial_worker(self):
-        """Sends commands from the queue and waits for an ACK ('K') from the Arduino."""
-        print("Serial worker with ACK flow control started.")
-        while not self._stop_threads.is_set():
-            try:
-                priority, command_str = self._command_queue.get(timeout=1)
-                if self._serial_port and self._serial_port.is_open:
-                    command = f"{command_str}\n".encode('utf-8')
-                    self._serial_port.write(command)
-                    ack = self._serial_port.readline().decode('utf-8').strip()
-                    if ack != 'K':
-                        print(f"⚠️ Bad ACK from Arduino: '{ack}' | Command: '{command_str}'")
-                        self._serial_port.reset_input_buffer()
-            except queue.Empty: continue
-            except serial.SerialTimeoutException:
-                print("!! SERIAL WRITE TIMEOUT !! Arduino unresponsive. Check connection.")
-                time.sleep(1)
-            except Exception as e:
-                print(f"Critical error in serial_worker: {e}")
-                break
-        print("Serial worker thread stopped.")
+        if self._key_listener: 
+            self._key_listener.stop()
 
     def _jaw_movement_generator(self):
-        """
-        Generates smoother, more organic jaw movements.
-        Oscillates between open states while speaking, rather than fully closing every time.
-        """
+        """Generates smoother, more organic jaw movements."""
         current_angle = self.JAW_CLOSE_ANGLE
         
         while not self._stop_threads.is_set():
             self._is_speaking.wait(0.1)
-            if not self._is_speaking.is_set(): 
-                continue
             
-            self._audio_started.wait()
-            
-            # Check for pause events (commas, full stops)
-            try:
-                event = self._events_queue.get_nowait()
-                if "PAUSE" in event:
-                    # Fully close on punctuation
-                    self._command_queue.put((1, f"jaw {self.JAW_CLOSE_ANGLE}"))
-                    current_angle = self.JAW_CLOSE_ANGLE
-                    time.sleep(self.PAUSE_DURATION_COMMA if "COMMA" in event else self.PAUSE_DURATION_FULLSTOP)
-                    continue
-            except queue.Empty:
-                pass
-
-            if self._is_speaking.is_set():
-                # Organic movement: Move to a random open position
-                # Limit max opening to 90 to stay well under the 110 limit for safety
-                target_open = random.uniform(50, 90)
+            if self._is_speaking.is_set() and not self._interrupted.is_set():
+                # Choose an open target angle
+                target_open = random.choice(self.JAW_OPEN_ANGLES)
                 
                 # Move to open position
-                self._command_queue.put((1, f"jaw {int(target_open)}"))
+                self._command_queue.put((1, f"jaw {target_open}"))
                 current_angle = target_open
                 
-                # Hold for a syllable duration (variable)
+                # Hold for a syllable duration
                 time.sleep(random.uniform(0.1, 0.25))
                 
-                # Instead of fully closing, move to a "semi-closed" or "less open" position
-                # This mimics continuous speech where the mouth doesn't always shut tight
+                # Move to semi-closed position
                 target_semi_closed = random.uniform(35, 45)
                 self._command_queue.put((1, f"jaw {int(target_semi_closed)}"))
                 current_angle = target_semi_closed
@@ -207,10 +291,8 @@ class Animatronic:
                 time.sleep(random.uniform(0.05, 0.15))
 
     def _perform_saccade(self, target_x, target_y):
-        """
-        Executes a realistic saccade with overshoot and micro-corrections.
-        """
-        # 1. Overshoot 1-2 degrees
+        """Executes a realistic saccade with overshoot and micro-corrections."""
+        # Overshoot 1-2 degrees
         overshoot_x = target_x + random.uniform(1, 2) * random.choice([-1, 1])
         overshoot_y = target_y + random.uniform(1, 2) * random.choice([-1, 1])
 
@@ -218,53 +300,68 @@ class Animatronic:
         self._command_queue.put((2, f"eye {int(overshoot_x)}"))
         self._command_queue.put((2, f"z {int(overshoot_y)}"))
 
-        # 2. Short biological delay (20-40ms)
+        # Short biological delay
         time.sleep(random.uniform(0.02, 0.04))
 
-        # 3. First correction (big)
+        # First correction
         correction_x = target_x + random.uniform(0.5, 1.0) * random.choice([-1, 1])
         correction_y = target_y + random.uniform(0.5, 1.0) * random.choice([-1, 1])
+        
         self._command_queue.put((2, f"eye {int(correction_x)}"))
         self._command_queue.put((2, f"z {int(correction_y)}"))
-
+        
         time.sleep(random.uniform(0.02, 0.04))
-
-        # 4. Final micro-correction (tiny)
-        final_x = target_x + random.uniform(0.1, 0.2) * random.choice([-1, 1])
-        final_y = target_y + random.uniform(0.1, 0.2) * random.choice([-1, 1])
-        self._command_queue.put((2, f"eye {int(final_x)}"))
-        self._command_queue.put((2, f"z {int(final_y)}"))
+        
+        # Final correction to target
+        self._command_queue.put((2, f"eye {int(target_x)}"))
+        self._command_queue.put((2, f"z {int(target_y)}"))
 
     def _eye_movement_generator(self):
-        """Generates eye movements with LOW priority (2) using realistic saccades."""
+        """Generates eye movements with realistic saccades and unscripted movements."""
         last_saccade_time = time.time()
+        last_unscripted_time = time.time()
+        unscripted_cooldown = random.uniform(8.0, 20.0)
         
-        # State variables for natural behavior
-        mode = "scanning" # scanning, examining, staring
+        # State variables
+        mode = "scanning"
         mode_change_time = time.time()
         current_focus_x = self.EYE_H_MID
         current_focus_y = self.EYE_V_MID
         
+        # Unscripted movement patterns
+        unscripted_patterns = [
+            "double_take", "slow_drift", "micro_tremor", 
+            "blink_look", "thoughtful_gaze", "surprise_glance"
+        ]
+        
         while not self._stop_threads.is_set():
             current_time = time.time()
             
-            # Randomly change modes every few seconds
+            # Trigger unscripted movement occasionally
+            if (current_time - last_unscripted_time > unscripted_cooldown and 
+                not self._is_speaking.is_set() and
+                random.random() < 0.3):
+                
+                pattern = random.choice(unscripted_patterns)
+                self._execute_unscripted_movement(pattern)
+                last_unscripted_time = current_time
+                unscripted_cooldown = random.uniform(8.0, 20.0)
+                last_saccade_time = current_time
+                continue
+            
+            # Randomly change modes
             if current_time - mode_change_time > random.uniform(5.0, 15.0):
                 mode = random.choice(["scanning", "examining", "staring"])
                 mode_change_time = current_time
-                # Pick a new focus point for examining/staring
                 current_focus_x = random.randint(self.EYE_H_MIN + 20, self.EYE_H_MAX - 20)
                 current_focus_y = random.randint(self.EYE_V_MIN + 20, self.EYE_V_MAX - 20)
             
             if self._is_speaking.is_set():
-                # When talking, glance away occasionally but mostly look at "user" (center)
                 if current_time - last_saccade_time > random.uniform(2.0, 5.0):
                     if random.random() < 0.7:
-                        # Look at user (center-ish)
                         target_x = self.EYE_H_MID + random.randint(-10, 10)
                         target_y = self.EYE_V_MID + random.randint(-10, 10)
                     else:
-                        # Glance away (thoughtful)
                         target_x = random.choice([self.EYE_H_MIN + 15, self.EYE_H_MAX - 15])
                         target_y = self.EYE_V_MID + random.randint(-20, 20)
                     
@@ -274,30 +371,23 @@ class Animatronic:
                     time.sleep(0.1)
             else:
                 # IDLE BEHAVIOR
-                
-                # Determine dwell time based on mode
                 if mode == "scanning":
-                    dwell = random.uniform(0.3, 0.8) # Look around quickly
+                    dwell = random.uniform(0.3, 0.8)
                 elif mode == "examining":
-                    dwell = random.uniform(0.8, 2.0) # Look at details
-                else: # staring
-                    dwell = random.uniform(2.0, 5.0) # Zone out
+                    dwell = random.uniform(0.8, 2.0)
+                else:
+                    dwell = random.uniform(2.0, 5.0)
                 
                 if current_time - last_saccade_time > dwell:
                     if mode == "scanning":
-                        # Big jumps across the range
                         target_x = random.randint(self.EYE_H_MIN, self.EYE_H_MAX)
                         target_y = random.randint(self.EYE_V_MIN, self.EYE_V_MAX)
-                    
                     elif mode == "examining":
-                        # Small jumps around a focus point
                         offset_x = random.randint(-15, 15)
                         offset_y = random.randint(-15, 15)
                         target_x = max(self.EYE_H_MIN, min(self.EYE_H_MAX, current_focus_x + offset_x))
                         target_y = max(self.EYE_V_MIN, min(self.EYE_V_MAX, current_focus_y + offset_y))
-                    
-                    else: # staring
-                        # Very tiny micro-movements around focus
+                    else:
                         offset_x = random.randint(-5, 5)
                         offset_y = random.randint(-5, 5)
                         target_x = max(self.EYE_H_MIN, min(self.EYE_H_MAX, current_focus_x + offset_x))
@@ -308,154 +398,206 @@ class Animatronic:
                 else:
                     time.sleep(0.05)
 
+    def _execute_unscripted_movement(self, pattern):
+        """Execute spontaneous, unscripted movements for natural 'alive' behavior."""
+        try:
+            if pattern == "double_take":
+                self._command_queue.put((2, "x 45"))
+                time.sleep(0.08)
+                self._command_queue.put((2, "x 125"))
+                time.sleep(0.15)
+                self._command_queue.put((2, "x 85"))
+                
+            elif pattern == "slow_drift":
+                drift_direction = random.choice([-1, 1])
+                for i in range(5):
+                    x = 85 + (drift_direction * i * 8)
+                    self._command_queue.put((2, f"x {max(40, min(130, x))}"))
+                    time.sleep(0.3)
+                for i in range(5, -1, -1):
+                    x = 85 + (drift_direction * i * 8)
+                    self._command_queue.put((2, f"x {max(40, min(130, x))}"))
+                    time.sleep(0.2)
+                    
+            elif pattern == "micro_tremor":
+                base_x, base_y = 85, 130
+                for _ in range(8):
+                    offset_x = random.randint(-3, 3)
+                    offset_y = random.randint(-2, 2)
+                    self._command_queue.put((2, f"x {base_x + offset_x}"))
+                    self._command_queue.put((2, f"z {base_y + offset_y}"))
+                    time.sleep(0.05)
+                    
+            elif pattern == "blink_look":
+                self._command_queue.put((2, "blink 1"))
+                time.sleep(0.1)
+                target_x = random.randint(self.EYE_H_MIN + 10, self.EYE_H_MAX - 10)
+                target_y = random.randint(self.EYE_V_MIN + 10, self.EYE_V_MAX - 10)
+                self._command_queue.put((2, f"x {target_x}"))
+                self._command_queue.put((2, f"z {target_y}"))
+                
+            elif pattern == "thoughtful_gaze":
+                self._command_queue.put((2, "x 95"))
+                self._command_queue.put((2, "z 90"))
+                time.sleep(0.5)
+                for _ in range(4):
+                    self._command_queue.put((2, f"x {95 + random.randint(-2, 2)}"))
+                    time.sleep(0.2)
+                    
+            elif pattern == "surprise_glance":
+                self._command_queue.put((2, "x 40"))
+                self._command_queue.put((2, "z 160"))
+                time.sleep(0.15)
+                self._command_queue.put((2, "x 130"))
+                self._command_queue.put((2, "z 70"))
+                time.sleep(0.1)
+                self._command_queue.put((2, "x 85"))
+                self._command_queue.put((2, "z 130"))
+                
+        except Exception as e:
+            print(f"Unscripted movement error (non-critical): {e}")
+
+    def _random_movement_generator(self):
+        """Additional random micro-movements for continuous 'alive' feel."""
+        while not self._stop_threads.is_set():
+            time.sleep(random.uniform(3.0, 8.0))  # Random interval
+            
+            if not self._is_speaking.is_set() and not self._interrupted.is_set():
+                # Random micro-adjustments
+                if random.random() < 0.4:  # 40% chance
+                    micro_x = 85 + random.randint(-5, 5)
+                    micro_y = 130 + random.randint(-3, 3)
+                    self._command_queue.put((3, f"x {micro_x}"))
+                    self._command_queue.put((3, f"z {micro_y}"))
+
     def _audio_streamer(self, text, player_process):
+        """Streams audio with lip sync."""
         try:
             for chunk in Communicate(text, self.VOICE, rate=self.RATE).stream_sync():
                 if player_process.poll() is not None: 
-                    print(f"❌ Player process died unexpectedly! Return code: {player_process.returncode}")
                     break
-                if chunk["type"] == "audio" and chunk["data"]:
-                    if not self._audio_started.is_set(): self._audio_started.set()
+                if self._interrupted.is_set() or self._emergency_interrupted.is_set():
+                    break
+                    
+                if chunk.get("type") == "audio" and chunk.get("data"):
                     try:
                         player_process.stdin.write(chunk["data"])
-                        player_process.stdin.flush() # Ensure data is sent immediately
+                        player_process.stdin.flush()
                     except BrokenPipeError:
-                        print("❌ Broken pipe: Player process closed stdin unexpectedly.")
                         break
-                elif chunk["type"] == "WordBoundary":
-                    if chunk["text"] == ",": self._events_queue.put("PAUSE_COMMA")
-                    elif chunk["text"] == ".": self._events_queue.put("PAUSE_FULLSTOP")
-        except Exception as e:
-            print(f"Audio streaming error: {e}")
-        finally:
-            if player_process.stdin and not player_process.stdin.closed: player_process.stdin.close()
 
-    def initialise(self, port_path=None):
-        # Allow manual port override via argument or constructor-specified port
-        if port_path:
-            self._serial_port = self._open_port(port_path)
-        else:
-            self._serial_port = self._find_arduino_port()
-        if not self._serial_port:
-            print("⚠️ No Arduino found. Running in AUDIO-ONLY mode.")
-        
-        self._stop_threads.clear()
-        threading.Thread(target=self._serial_worker, daemon=True).start()
-        threading.Thread(target=self._jaw_movement_generator, daemon=True).start()
-        threading.Thread(target=self._eye_movement_generator, daemon=True).start()
-        return True
+                    # Lip sync
+                    try:
+                        audio_segment = AudioSegment(
+                            data=chunk["data"], 
+                            sample_width=2, 
+                            frame_rate=24000,
+                            channels=1
+                        )
+                        rms = audio_segment.rms
+                        if rms > 100:
+                            normalized = min(1.0, rms / 8000.0)
+                            angle = 30 + (normalized * 60)
+                            self._command_queue.put((1, f"jaw {int(angle)}"))
+                        else:
+                            self._command_queue.put((1, f"jaw {self.JAW_CLOSE_ANGLE}"))
+                    except:
+                        pass
+
+        except Exception as e:
+            print(f"Audio streamer error: {e}")
 
     def speak_text(self, text_to_speak):
-        if not text_to_speak.strip(): return
+        """Natural speech with conversational pacing and gestures."""
+        if not text_to_speak or not text_to_speak.strip():
+            return
         
         # Filter out emojis
         text_to_speak = re.sub(r'[\U00010000-\U0010ffff]', '', text_to_speak)
         
-        print(f"▶️ Speaking: \"{text_to_speak}\" (Press 'p' to stop, 'l' to center neck)")
+        print(f"▶️ Speaking: \"{text_to_speak}\"")
+        print("   [Press: SPACE/p=interrupt, ESC=emergency, l/n/y/u=gestures]")
+        
         self._command_queue.queue.clear()
         self._events_queue.queue.clear()
         self._audio_started.clear()
+        self._interrupted.clear()
+        self._emergency_interrupted.clear()
         self._is_speaking.set()
         self._start_interrupt_listener()
 
         try:
-
-            # STREAMING PLAYBACK WITH REAL-TIME LIP SYNC
-            try:
-                # Start mpv process for streaming
-                # --cache=yes --demuxer-max-bytes=128KiB minimizes buffering latency
-                player_command = ["mpv", "--no-terminal", "--cache=yes", "--demuxer-max-bytes=128KiB", "-"]
-                player_process = subprocess.Popen(
-                    player_command, 
-                    stdin=subprocess.PIPE, 
-                    stdout=subprocess.DEVNULL, 
-                    stderr=subprocess.DEVNULL
-                )
-                self._player_process = player_process
-                self._audio_started.set() # Signal eyes to be active
-
-                # Stream chunks
-                for chunk in Communicate(text_to_speak, self.VOICE, rate=self.RATE).stream_sync():
-                    if not self._is_speaking.is_set(): 
-                        player_process.terminate()
-                        break
-                        
-                    if chunk["type"] == "audio" and chunk["data"]:
-                        # 1. Write to player
-                        try:
-                            player_process.stdin.write(chunk["data"])
-                            player_process.stdin.flush()
-                        except BrokenPipeError:
-                            break
-
-                        # 2. Real-time Lip Sync (Approximate)
-                        # Calculate RMS of this chunk
-                        audio_segment = AudioSegment(
-                            data=chunk["data"], 
-                            sample_width=2, 
-                            frame_rate=24000, # EdgeTTS default
-                            channels=1
-                        )
-                        rms = audio_segment.rms
-                        
-                        # Map RMS to Jaw Angle
-                        # Simple mapping: louder = wider
-                        # Thresholds need tuning based on mic/speaker levels
-                        if rms > 100: # Noise floor
-                            # Normalize roughly (max RMS usually ~10000-20000 for TTS)
-                            normalized = min(1.0, rms / 8000.0)
-                            angle = 30 + (normalized * (90 - 30))
-                            self._command_queue.put((1, f"jaw {int(angle)}"))
-                        else:
-                            self._command_queue.put((1, f"jaw {self.JAW_CLOSE_ANGLE}"))
-
-                    elif chunk["type"] == "WordBoundary":
-                        # Optional: Use word boundaries for finer control if needed
-                        pass
-                        
-                # Close stdin to let mpv know stream is done
-                if player_process.stdin:
-                    player_process.stdin.close()
-                
-                # Wait for playback to finish
-                player_process.wait()
-                
-            except Exception as e:
-                print(f"❌ Error streaming audio: {e}")
-                self._command_queue.put((1, f"jaw {self.JAW_CLOSE_ANGLE}"))
-                    
-        finally:
-            # Small buffer to allow last jaw movements to finish naturally
-            time.sleep(0.1) 
+            # Pre-speech attention gesture
+            self._command_queue.put((1, "x 80"))
+            self._command_queue.put((1, "z 120"))
             
+            # Start player
+            player_command = ["mpv", "--no-terminal", "--cache=no", "--demuxer-max-bytes=32KiB", "--untimed", "-"]
+            player_process = subprocess.Popen(
+                player_command, 
+                stdin=subprocess.PIPE, 
+                stdout=subprocess.DEVNULL, 
+                stderr=subprocess.DEVNULL
+            )
+            self._player_process = player_process
+            self._audio_started.set()
+
+            # Stream audio
+            self._audio_streamer(text_to_speak, player_process)
+            
+            # Cleanup
+            if player_process.poll() is None:
+                try:
+                    player_process.stdin.close()
+                    player_process.wait(timeout=1)
+                except:
+                    player_process.kill()
+                    
+        except Exception as e:
+            print(f"❌ Error in speak_text: {e}")
+            
+        finally:
             self._is_speaking.clear()
             self._stop_interrupt_listener()
-
-            self._command_queue.put((1, f"jaw {self.JAW_CLOSE_ANGLE}"))
-            self._command_queue.put((2, f"eye {self.EYE_H_MID}"))
             self._command_queue.put((2, f"z {self.EYE_V_MID}"))
+            self._command_queue.put((1, f"jaw {self.JAW_CLOSE_ANGLE}"))
             print("✅ Speech complete.\n")
 
     def stop_speech(self):
-        """Stops the current speech immediately and cancels pending stream."""
-        print("\n🛑 External stop command received. Stopping audio.")
-        self._interrupted.set() # Signal stream to stop
+        """Enhanced speech stop with edge case handling and graceful recovery."""
+        print("\n🛑 Stop command received. Gracefully halting speech...")
+        
+        self._interrupted.set()
+        self._emergency_interrupted.set()
+        
+        # Graceful termination with fallback
         if self._player_process:
-            self._player_process.terminate()
+            try:
+                self._player_process.terminate()
+                time.sleep(0.15)
+                if self._player_process.poll() is None:
+                    print("⚠️ Force killing stuck audio process...")
+                    self._player_process.kill()
+                    time.sleep(0.05)
+            except Exception as e:
+                print(f"Audio stop error (handled): {e}")
+        
         self._is_speaking.clear()
+        self._command_queue.put((1, f"jaw {self.JAW_CLOSE_ANGLE}"))
+        
+        # Recovery pause
+        time.sleep(config.INTERRUPT_RECOVERY_TIME)
+        
+        self._interrupted.clear()
+        self._emergency_interrupted.clear()
+        print("✅ Ready for next interaction.")
 
     def stream_text(self, text_generator):
-        """
-        Consumes a generator yielding text chunks.
-        Buffers text into sentences and speaks them as they become available.
-        """
-        self._interrupted.clear() # Reset interrupt flag at start
+        """Consumes a generator yielding text chunks with natural buffering."""
+        self._interrupted.clear()
         buffer = ""
         sentence_endings = re.compile(r'(?<=[.!?])\s+')
-        full_text = ""
-        
-        # Fast start parameters
-        MAX_BUFFER_SIZE = 60 # Characters
+        MAX_BUFFER_SIZE = 60
         
         for chunk in text_generator:
             if self._interrupted.is_set():
@@ -463,79 +605,323 @@ class Animatronic:
                 break
                 
             buffer += chunk
-            full_text += chunk
             
-            # Check for sentence endings
             sentences = sentence_endings.split(buffer)
             
-            # If we have more than one part, the first parts are complete sentences
             if len(sentences) > 1:
                 for sentence in sentences[:-1]:
                     if self._interrupted.is_set():
                         break
                     if sentence.strip():
                         self.speak_text(sentence.strip())
-                
-                # Keep the last part in the buffer
                 buffer = sentences[-1]
             
-            # FAST START / ANTI-STALL LOGIC
-            # If buffer gets too long without a sentence end, force a split at comma or space
             elif len(buffer) > MAX_BUFFER_SIZE:
-                # Try to split at last comma
                 last_comma = buffer.rfind(',')
-                if last_comma != -1:
-                    to_speak = buffer[:last_comma+1] # Include comma
-                    remaining = buffer[last_comma+1:]
-                    if to_speak.strip():
-                        self.speak_text(to_speak.strip())
-                        buffer = remaining
-                else:
-                    # Try to split at last space
-                    last_space = buffer.rfind(' ')
-                    if last_space != -1:
-                        to_speak = buffer[:last_space]
-                        remaining = buffer[last_space+1:]
-                        if to_speak.strip():
-                            self.speak_text(to_speak.strip())
-                            buffer = remaining
+                last_space = buffer.rfind(' ')
+                split_point = last_comma if last_comma > len(buffer) * 0.6 else last_space
+                
+                if split_point > 10:
+                    self.speak_text(buffer[:split_point].strip())
+                    buffer = buffer[split_point:].strip()
         
-        # Speak any remaining text in the buffer
         if buffer.strip() and not self._interrupted.is_set():
             self.speak_text(buffer.strip())
+
+    # ============================================================================
+    # SUBCONSCIOUS MICRO-MOVEMENT GENERATORS
+    # These create an "alive" feeling without being consciously noticeable
+    # ============================================================================
+    
+    def _micro_saccade_generator(self):
+        """
+        Micro-saccades: Tiny involuntary eye movements that occur even when staring.
+        Humans make these constantly (every ~200ms) but they're barely perceptible.
+        This prevents the "dead stare" effect of fixed eyes.
+        """
+        print("👁️ Micro-saccade generator started (subconscious eye movements)")
+        base_x, base_y = 85, 130
+        
+        while not self._stop_threads.is_set():
+            time.sleep(config.MICRO_SACCADE_INTERVAL)
             
-        return full_text
+            # Only when not speaking and not already moving significantly
+            if not self._is_speaking.is_set():
+                # Generate tiny random offsets (±2 degrees)
+                micro_x = base_x + random.randint(-config.MICRO_SACCADE_SIZE, config.MICRO_SACCADE_SIZE)
+                micro_y = base_y + random.randint(-config.MICRO_SACCADE_SIZE//2, config.MICRO_SACCADE_SIZE//2)
+                
+                # Apply with lowest priority (4) so it doesn't conflict
+                self._command_queue.put((4, f"x {micro_x}"))
+                self._command_queue.put((4, f"z {micro_y}"))
+                
+                # Slowly drift base position to prevent repetitive patterns
+                base_x += random.uniform(-0.5, 0.5)
+                base_y += random.uniform(-0.3, 0.3)
+                base_x = max(75, min(95, base_x))  # Keep within subtle range
+                base_y = max(125, min(135, base_y))
+    
+    def _breathing_rhythm_generator(self):
+        """
+        Simulates breathing through subtle head/neck movement.
+        Creates a rhythmic, life-like motion that humans subconsciously expect.
+        Cycle: 4 seconds (inhale/exhale pattern)
+        """
+        print("🫁 Breathing rhythm generator started")
+        breath_phase = 0.0  # 0 to 2π
+        
+        while not self._stop_threads.is_set():
+            # Calculate breathing offset (sine wave)
+            breath_offset = math.sin(breath_phase) * config.BREATHING_AMPLITUDE
+            
+            # Apply to neck/head position (y-axis for subtle nod)
+            # Only when not speaking to avoid conflict
+            if not self._is_speaking.is_set():
+                neck_pos = 88 + breath_offset
+                self._command_queue.put((4, f"y {int(neck_pos)}"))
+            
+            # Advance phase
+            breath_phase += (2 * math.pi) / (config.BREATHING_CYCLE * 60)  # Assuming 60 iterations/sec
+            if breath_phase > 2 * math.pi:
+                breath_phase = 0
+            
+            time.sleep(0.016)  # ~60 FPS
+    
+    def _subconscious_twitch_generator(self):
+        """
+        Occasional micro-twitches that real humans have.
+        Small, quick movements that suggest neural activity and muscle tone.
+        Happens randomly every ~30-50 seconds on average.
+        """
+        print("⚡ Subconscious twitch generator started")
+        
+        while not self._stop_threads.is_set():
+            # Random check every second
+            time.sleep(1.0)
+            
+            if random.random() < config.SUBCONSCIOUS_TWITCH_CHANCE:
+                if not self._is_speaking.is_set():
+                    # Pick a random servo and twitch it slightly
+                    twitch_type = random.choice(['eye_x', 'eye_y', 'neck', 'jaw'])
+                    
+                    if twitch_type == 'eye_x':
+                        current = 85 + random.randint(-3, 3)
+                        self._command_queue.put((4, f"x {current}"))
+                        time.sleep(0.08)
+                        self._command_queue.put((4, f"x {85}"))
+                    
+                    elif twitch_type == 'eye_y':
+                        current = 130 + random.randint(-2, 2)
+                        self._command_queue.put((4, f"z {current}"))
+                        time.sleep(0.06)
+                        self._command_queue.put((4, f"z {130}"))
+                    
+                    elif twitch_type == 'neck':
+                        current = 88 + random.randint(-2, 2)
+                        self._command_queue.put((4, f"y {current}"))
+                        time.sleep(0.1)
+                        self._command_queue.put((4, f"y {88}"))
+    
+    def _natural_blink_generator(self):
+        """
+        Natural blinking with human-like patterns.
+        - Blink rate varies (not mechanical)
+        - Double-blinks occasionally (tired/dry eyes)
+        - Longer blinks when "thinking"
+        - Cluster blinks (several in short succession)
+        """
+        print("😉 Natural blink generator started")
+        
+        while not self._stop_threads.is_set():
+            # Random interval between blinks (2.5 to 6 seconds)
+            interval = random.uniform(config.BLINK_MIN_INTERVAL, config.BLINK_MAX_INTERVAL)
+            time.sleep(interval)
+            
+            if not self._is_speaking.is_set():
+                blink_type = random.random()
+                
+                if blink_type < 0.05:  # 5% chance of double-blink
+                    # Double blink (like when eyes are dry)
+                    self._command_queue.put((3, "blink 1"))
+                    time.sleep(0.18)
+                    self._command_queue.put((3, "blink 1"))
+                
+                elif blink_type < 0.15:  # 10% chance of "thinking" blink (longer)
+                    # Extended blink (processing/thinking)
+                    self._command_queue.put((3, "blink 1"))
+                    time.sleep(0.25)
+                
+                elif blink_type < 0.20:  # 5% chance of blink cluster
+                    # Rapid blinks (3 in succession)
+                    for _ in range(3):
+                        self._command_queue.put((3, "blink 1"))
+                        time.sleep(0.12)
+                
+                else:  # 80% normal blink
+                    self._command_queue.put((3, "blink 1"))
+    
+    def _idle_drift_generator(self):
+        """
+        Slow drift when idle - eyes naturally drift around even when "focused".
+        Prevents the statue-like frozen stare.
+        Speed: ~0.3 degrees per second (very slow, barely perceptible)
+        """
+        print("🌊 Idle drift generator started")
+        
+        drift_x, drift_y = 85, 130
+        target_x, target_y = 85, 130
+        
+        while not self._stop_threads.is_set():
+            time.sleep(0.1)
+            
+            if not self._is_speaking.is_set():
+                # Pick new target occasionally
+                if random.random() < 0.02:  # 2% chance per 100ms
+                    target_x = random.randint(80, 90)
+                    target_y = random.randint(125, 135)
+                
+                # Drift toward target slowly
+                if abs(drift_x - target_x) > 0.5:
+                    drift_x += (target_x - drift_x) * config.IDLE_DRIFT_SPEED * 0.1
+                if abs(drift_y - target_y) > 0.5:
+                    drift_y += (target_y - drift_y) * config.IDLE_DRIFT_SPEED * 0.1
+                
+                self._command_queue.put((4, f"x {int(drift_x)}"))
+                self._command_queue.put((4, f"z {int(drift_y)}"))
+    
+    def _attention_decay_generator(self):
+        """
+        Simulates attention decay - when idle, attention slowly wanders.
+        Creates micro-movements suggesting the robot is "alive" and aware.
+        Movement gets more random over time when idle.
+        """
+        print("🎯 Attention decay generator started")
+        
+        idle_time = 0
+        base_x, base_y = 85, 130
+        
+        while not self._stop_threads.is_set():
+            time.sleep(0.5)
+            
+            if not self._is_speaking.is_set():
+                idle_time += 0.5
+                
+                # Attention wanders more the longer we're idle
+                wander_factor = min(idle_time * config.ATTENTION_DECAY_RATE, 5.0)
+                
+                # Add wandering to base position
+                wander_x = base_x + random.gauss(0, wander_factor)
+                wander_y = base_y + random.gauss(0, wander_factor * 0.6)
+                
+                # Constrain to reasonable limits
+                wander_x = max(70, min(100, wander_x))
+                wander_y = max(120, min(140, wander_y))
+                
+                self._command_queue.put((4, f"x {int(wander_x)}"))
+                self._command_queue.put((4, f"z {int(wander_y)}"))
+            else:
+                # Reset idle time when speaking
+                idle_time = 0
+
+    def _emotional_micro_expression_generator(self):
+        """
+        Subconscious emotional micro-expressions that leak through.
+        These are tiny facial movements that happen when processing information
+        or reacting emotionally, even when trying to maintain a neutral expression.
+        - Subtle eyebrow raises (surprise/interest)
+        - Tiny squints (processing/concentration)
+        - Micro-nods (agreement/understanding)
+        - Slight head tilts (curiosity)
+        """
+        print("🎭 Emotional micro-expression generator started")
+        
+        expression_cooldown = 0
+        
+        while not self._stop_threads.is_set():
+            time.sleep(0.5)
+            expression_cooldown -= 0.5
+            
+            if not self._is_speaking.is_set() and expression_cooldown <= 0:
+                # Random chance of micro-expression (3% per second)
+                if random.random() < 0.015:  # 1.5% per 500ms = ~3% per second
+                    expression = random.choice([
+                        'subtle_surprise', 'processing_squint', 'micro_nod', 
+                        'curiosity_tilt', 'thoughtful_look'
+                    ])
+                    
+                    if expression == 'subtle_surprise':
+                        # Quick eyebrow raise (eyes widen slightly)
+                        self._command_queue.put((3, "z 125"))
+                        time.sleep(0.1)
+                        self._command_queue.put((3, "z 130"))
+                        expression_cooldown = 4.0
+                    
+                    elif expression == 'processing_squint':
+                        # Brief squint (processing something)
+                        self._command_queue.put((3, "x 87"))  # Slight convergence
+                        self._command_queue.put((3, "z 132"))
+                        time.sleep(0.15)
+                        self._command_queue.put((3, "x 85"))
+                        self._command_queue.put((3, "z 130"))
+                        expression_cooldown = 3.0
+                    
+                    elif expression == 'micro_nod':
+                        # Tiny nod (agreement/understanding)
+                        self._command_queue.put((3, "y 87"))
+                        time.sleep(0.08)
+                        self._command_queue.put((3, "y 88"))
+                        time.sleep(0.08)
+                        self._command_queue.put((3, "y 87"))
+                        expression_cooldown = 5.0
+                    
+                    elif expression == 'curiosity_tilt':
+                        # Head tilt (curious about something)
+                        self._command_queue.put((3, "y 90"))
+                        time.sleep(0.5)  # Hold the tilt
+                        self._command_queue.put((3, "y 88"))
+                        expression_cooldown = 6.0
+                    
+                    elif expression == 'thoughtful_look':
+                        # Eyes drift up while thinking
+                        self._command_queue.put((3, "x 88"))
+                        self._command_queue.put((3, "z 125"))
+                        time.sleep(0.3)
+                        self._command_queue.put((3, "x 85"))
+                        self._command_queue.put((3, "z 130"))
+                        expression_cooldown = 4.0
+
+    def _get_player_command(self):
+        """Detects available audio player command."""
+        if shutil.which("mpv"): 
+            return ["mpv", "--no-terminal", "--quiet", "-"]
+        elif shutil.which("ffplay"): 
+            return [
+                "ffplay", "-v", "0", "-nodisp", "-autoexit", 
+                "-fflags", "nobuffer", "-infbuf", "-probesize", "32768", "-i", "-"
+            ]
+        elif shutil.which("mpg123"): 
+            return ["mpg123", "-q", "--buffer", "4096", "-"]
+        else: 
+            raise RuntimeError("Install mpv, ffmpeg or mpg123 for audio playback.")
 
     def shutdown(self):
-        print("Shutting down...")
+        """Stops all threads and closes serial connection."""
+        print("Shutting down Animatronic...")
         self._stop_threads.set()
-        self._stop_interrupt_listener()
+        self._interrupted.set()
+        self._emergency_interrupted.set()
+        
+        if self._player_process:
+            try:
+                self._player_process.kill()
+            except:
+                pass
+                
+        if self._key_listener:
+            self._key_listener.stop()
+            
         if self._serial_port and self._serial_port.is_open:
-            time.sleep(0.5)
             self._serial_port.close()
-        print("👋 Program ended.")
-
-if __name__ == '__main__':
-    skull = Animatronic()
-    try:
-        if skull.initialise():
-            print("\n--- Animatronic Initialised with Direct Connection. ---")
-            time.sleep(1)
             
-            
-            time.sleep(4)
-            skull._command_queue.put((2, "neck 120"))
- 
-            skull._command_queue.put((2, "neck 80"))
-            time.sleep(2)
-            skull._command_queue.put((2, "neck 80"))
-            skull.speak_text("That is easy. I simply hit 'Select All'… and then 'Delete'.")
-            time.sleep(1)
-            skull.speak_text("Would you like to confirm?")
-
-          
-    except Exception as e:
-        print(f"A critical error occurred in the main block: {e}")
-    finally:
-        if skull:
-            skull.shutdown()
+        time.sleep(0.5)
+        print("✅ Animatronic shutdown complete.")

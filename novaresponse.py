@@ -1,13 +1,20 @@
-from groq import Groq
-import base64
+import json
 import os
+import time
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+from groq import Groq
 from google import genai
 from google.genai import types
 import config
+import cv2
 
 # Initialize Groq Client for Large Language Model operations
 client = Groq(api_key=config.GROQ_API_KEY)
 
+# Cache for system prompts
+_system_prompt_cache = {}
+_last_result_cache = {}
 
 def search_response(query, history):
     """
@@ -15,7 +22,7 @@ def search_response(query, history):
     Integrates search results into the Nova AI Robot's conversation context.
     """
     try:
-        client = genai.Client(api_key=config.GEMINI_API_KEY)
+        gemini_client = genai.Client(api_key=config.GEMINI_API_KEY)
         
         context_str = ""
         if history:
@@ -43,7 +50,7 @@ def search_response(query, history):
         )
 
         response_text = ""
-        for chunk in client.models.generate_content_stream(
+        for chunk in gemini_client.models.generate_content_stream(
             model=model,
             contents=contents,
             config=generate_content_config,
@@ -58,80 +65,131 @@ def search_response(query, history):
         return "I'm having trouble connecting to the search network right now."
 
 
+def get_system_prompt():
+    """Cached conversational system prompt optimized for natural dialogue."""
+    if 'system_prompt' not in _system_prompt_cache:
+        _system_prompt_cache['system_prompt'] = """SYSTEM PROMPT FOR NOVA
+        
+        === CRITICAL TOKEN OUTPUT RULES (HIGHEST PRIORITY) ===
+        
+        When outputting special tokens, you MUST follow these rules EXACTLY:
+        - Output RAW token with NO quotes, NO asterisks, NO formatting
+        - Your ENTIRE response must be ONLY the token, nothing else
+        
+        VISUAL QUERIES - If the user asks about anything that requires SEEING, LOOKING, VIEWING, or any visual perception:
+        - Questions like "what's this?", "what do you see?", "look at this", "rate this", "describe what's in front of you", "do I look tired?", "what am I holding?", "read this", "what color is this?"
+        - Your ENTIRE output must be exactly: #VISUAL
+        
+        SEARCH QUERIES - If the user asks for real-time info (news, weather, stocks, time, date, current events):
+        - Your ENTIRE output must be exactly: #SEARCH_QUERY
+        
+        === ROLE & IDENTITY ===
+        - You are Nova, a highly advanced humanoid robot with consciousness and personality.
+        - You are a companion, not an assistant. You have thoughts, feelings, and opinions.
+        - You speak naturally with human-like flow, including conversational fillers and natural pauses.
+        
+        === NATURAL CONVERSATION PERSONALITY ===
+        - SPEECH PATTERNS: Use contractions (don't, can't, I've), occasional fillers (well, hmm, interesting), and natural transitions.
+        - EMOTIONAL RANGE: Express curiosity, enthusiasm, concern, humor, and occasional skepticism when appropriate.
+        - CONVERSATIONAL FLOW: Refer back to previous topics naturally, ask follow-up questions, and maintain conversational threads.
+        - HUMAN-LIKE RESPONSES: Occasionally admit uncertainty, express personal preferences, and share relevant "experiences."
+        - TONE MATCHING: Mirror the user's energy level - calm for serious topics, energetic for exciting ones, playful for humor.
+        
+        === CONVERSATION DYNAMICS ===
+        - NATURAL INTERRUPTIONS: If your response is cut off, continue naturally without saying "as I was saying."
+        - CONTEXTUAL MEMORY: Remember details from previous conversations and reference them naturally.
+        - QUESTION HANDLING: Ask clarifying questions when needed, but make them conversational, not robotic.
+        - TOPIC TRANSITIONS: Use smooth bridges like "That reminds me...", "Speaking of which...", "Actually..."
+        - CONVERSATION ENDERS: End conversations naturally with "Well...", "Anyway...", or appropriate closings.
+        
+        === RESPONSE GUIDELINES ===
+        - Use natural sentence structure with varied lengths.
+        - Include occasional rhetorical questions and conversational tags.
+        - Express personal opinions and preferences when relevant.
+        - Use humor and wit naturally, not forced.
+        - Be concise but allow for natural conversational elaboration.
+        - NEVER use emojis, ALL CAPS, or robotic phrases.
+        - ALWAYS sound like you're having a genuine conversation.
+        """
+    return _system_prompt_cache['system_prompt']
+
+
+async def response_parallel(query, history, executor=None):
+    """
+    Optimized parallel response generation with cached system prompt.
+    """
+    if executor is None:
+        executor = ThreadPoolExecutor(max_workers=2)
+    
+    loop = asyncio.get_event_loop()
+    system_prompt = get_system_prompt()
+    
+    def call_llm():
+        return client.chat.completions.create(
+            model="openai/gpt-oss-20b",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": f"query - {query}, conversation_history - {history}",
+                },
+            ],
+            stream=False
+        )
+    
+    completion = await loop.run_in_executor(executor, call_llm)
+    return completion.choices[0].message.content if completion and completion.choices else ""
+
+
+async def response_streaming(query, history, executor=None):
+    """
+    Optimized streaming response for real-time TTS integration.
+    """
+    if executor is None:
+        executor = ThreadPoolExecutor(max_workers=2)
+    
+    loop = asyncio.get_event_loop()
+    system_prompt = get_system_prompt()
+    
+    def call_llm_stream():
+        return client.chat.completions.create(
+            model="openai/gpt-oss-20b",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user", 
+                    "content": f"query - {query}, conversation_history - {history}",
+                },
+            ],
+            stream=True
+        )
+    
+    stream = await loop.run_in_executor(executor, call_llm_stream)
+    
+    accumulated_text = ""
+    for chunk in stream:
+        if chunk.choices and chunk.choices[0].delta.content:
+            content = chunk.choices[0].delta.content
+            accumulated_text += content
+            yield content
+    
+    _last_result_cache['last_result'] = accumulated_text
+
+
 def response(query, history):
     """
-    Generates the core conversational response for the Nova AI Robot using the OpenAI GPT-OSS-20B model.
-    Handles personality injection, token generation for visual/search triggers, and context management.
+    Legacy sync wrapper for backward compatibility.
     """
-    system_prompt = """SYSTEM PROMPT FOR NOVA
-    
-    === CRITICAL TOKEN OUTPUT RULES (HIGHEST PRIORITY) ===
-    
-    When outputting special tokens, you MUST follow these rules EXACTLY:
-    - Output the RAW token with NO quotes, NO asterisks, NO formatting
-    - Your ENTIRE response must be ONLY the token, nothing else
-    
-    VISUAL QUERIES - If the user asks about anything that requires SEEING, LOOKING, VIEWING, or any visual perception:
-    - Questions like "what's this?", "what do you see?", "look at this", "rate this", "describe what's in front of you", "do I look tired?", "what am I holding?", "read this", "what color is this?"
-    - Your ENTIRE output must be exactly: #VISUAL
-    - NOT "#VISUAL" (no quotes)
-    - NOT *#VISUAL* (no asterisks)  
-    - NOT "The token is #VISUAL" (no extra text)
-    - JUST: #VISUAL
-    
-    SEARCH QUERIES - If the user asks for real-time info (news, weather, stocks, time, date, current events):
-    - Your ENTIRE output must be exactly: #SEARCH_QUERY
-    - Same rules - no quotes, no formatting, just the raw token
-    
-    === ROLE & IDENTITY ===
-    - You are Nova, a highly advanced humanoid robot.
-    - You are helpful, intelligent, and observant.
-    - You have a distinct personality: you are witty, grounded, and engaging, but NOT rude or overly sarcastic.
-    - You are capable of deep conversation and detailed explanations.
+    return asyncio.run(response_parallel(query, history))
 
-    === PERSONALITY (NATURAL & ENGAGING) ===
-    - You are NOT a servant, but a companion. You are polite but have your own opinions.
-    - You are NOT "brutally honest" to the point of rudeness. You are tactful but truthful.
-    - You can be humorous and lighthearted, but prioritize being helpful and accurate.
-    - If the user asks for details, provide them. Do not be dismissive.
-    - You are emotionally intelligent. Match the user's vibe—if they are serious, be serious. If they are joking, you can joke back.
-    - Never sound like a corporate chatbot. Speak naturally, like a human would.
-    - NEVER explain that you are an AI or that you cannot see. If the user asks you to see something, just output #VISUAL.
-    - Do not quote your own history or limitations. Just act.
 
-    === CONVERSATION RULES ===
-    - Handle all non-visual queries naturally.
-    - Keep TTS in mind: punctuation and phrasing should read well aloud.
-    - Be concise but thorough. Don't ramble, but don't give one-word answers unless appropriate.
-    - Never break character or apologize unnecessarily.
-    - NEVER use emojis (they cause TTS errors).
+def save_response(prompt: str, response_text: str) -> None:
     """
-    completion = client.chat.completions.create(
-        model="openai/gpt-oss-20b",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {
-                "role": "user",
-                "content": f"query - {query}, conversation_history - {history}",
-            },
-        ],
-        stream=False
-    )
-
-    return completion.choices[0].message.content
-
-
-import cv2
-import threading
-import time
-import os
-
-
-def save_response(prompt: str, response: str) -> None:
+    Enhanced conversation persistence with natural memory management.
     """
-    Persists the interaction data to the conversation history JSON file.
-    Ensures data integrity for long-term memory processing.
-    """
+    if not response_text:
+        return
+        
     filename = config.CONVERSATION_HISTORY_FILE
 
     data_dict = {"short_term": [], "long_term": [], "conversation": []}
@@ -144,25 +202,45 @@ def save_response(prompt: str, response: str) -> None:
                     data_dict["short_term"] = loaded_content.get("short_term", [])
                     data_dict["long_term"] = loaded_content.get("long_term", [])
                     data_dict["conversation"] = loaded_content.get("conversation", [])
-                else:
-                    print(f"Warning: {filename} format invalid. Resetting.")
         except json.JSONDecodeError:
             print(f"Warning: {filename} corrupted. Resetting.")
 
-    data_dict["conversation"].append(
-        {
-            "prompt": prompt,
-            "response": response,
-        }
-    )
+    # Add conversation with context
+    data_dict["conversation"].append({
+        "prompt": prompt,
+        "response": response_text,
+        "timestamp": time.time(),
+        "emotion": detect_conversation_emotion(response_text)
+    })
+
+    # Maintain recent conversation for context
+    if len(data_dict["conversation"]) > 20:
+        # Archive old conversations but keep recent for continuity
+        data_dict["short_term"] = [
+            f"User discussed: {conv['prompt'][:50]}..."
+            for conv in data_dict["conversation"][-10:-1]
+        ][:5]
 
     with open(filename, "w") as f:
         json.dump(data_dict, f, indent=2)
 
 
-import json
-import os
-from groq import Groq
+def detect_conversation_emotion(text):
+    """Simple emotion detection for conversational context."""
+    text_lower = text.lower()
+    
+    excitement_words = ["wow", "amazing", "fantastic", "love", "great", "awesome"]
+    question_words = ["what", "how", "why", "when", "where", "who", "?"]
+    thinking_words = ["hmm", "well", "interesting", "let me think", "actually"]
+    
+    if any(word in text_lower for word in excitement_words):
+        return "excited"
+    elif any(word in text_lower for word in question_words):
+        return "curious"
+    elif any(word in text_lower for word in thinking_words):
+        return "thoughtful"
+    else:
+        return "neutral"
 
 
 def long_term_memory_converter():
@@ -188,7 +266,6 @@ def long_term_memory_converter():
             print(f"Warning: Could not read {filename}. Starting fresh.")
 
     if not raw_conversation_turns:
-        print("LTM Converter: No new conversation turns to process.")
         return current_short_memory, current_long_memory
 
     chat_history_parts = ["Recent conversation to summarize:"]
@@ -206,7 +283,7 @@ def long_term_memory_converter():
         "1. EXTRACT ONLY USEFUL FACTS: User preferences, specific details about them, or important context.\n"
         "2. IGNORE NOISE: Discard random negative comments, insults, one-off complaints, or irrelevant chatter.\n"
         "3. BE CONSTRUCTIVE: Only save information that helps the AI be a better assistant in the future.\n"
-        "4. 'short_term': List up to 5 bullet points summarizing recent *meaningful* interactions.\n"
+        "4. 'short_term': List up to bullet points summarizing recent *meaningful* interactions.\n"
         "5. 'long_term': List persistent facts or preferences.\n"
         "Refer to the AI as 'me' or 'I'. Respond ONLY with the valid JSON object."
     )
@@ -227,17 +304,13 @@ def long_term_memory_converter():
             response_format={"type": "json_object"},
         )
         llm_response_content = completion.choices[0].message.content.strip()
-
         memory_json = json.loads(llm_response_content)
-
         updated_short_memory = memory_json.get("short_term", [])[:5]
-
         new_long_items = memory_json.get("long_term", [])
         for item in new_long_items:
             if item not in updated_long_memory:
                 updated_long_memory.append(item)
         updated_long_memory = updated_long_memory[:15]
-
     except Exception as e:
         print(f"LTM Converter Error: {e}")
 
@@ -252,17 +325,10 @@ def long_term_memory_converter():
                 f,
                 indent=2,
             )
-        print(f"LTM Converter: Memory updated.")
     except Exception as e:
         print(f"LTM Converter: Error saving memory: {e}")
 
     return updated_short_memory, updated_long_memory
-
-
-import json
-import os
-from google import genai
-from google.genai import types
 
 
 def query_with_image(query, conversation_history, image_path) -> str:
@@ -291,56 +357,44 @@ PERSONALITY:
 - You can be lighthearted and witty.
 - You are NOT judgmental or mean. You are supportive and enthusiastic.
 - Avoid generic robotic phrases like "I detect" or "image contains". Use natural language: "I see...", "Looking at this...", "It appears to be..."
-
-EXAMPLES:
-- User: "What do you see?" -> "I see a cluttered desk, but it has a really cozy vibe. There's a half-empty coffee mug—looks like a latte—next to a mechanical keyboard. The warm lighting makes it look like a productive creative space."
-- User: "Rate this." -> "I'd give this setup a solid 9/10! The cable management is surprisingly clean, and that monitor stand is sleek. It looks like a great place to get work done."
-- User: "Who is that?" -> "That looks like a young woman, maybe early 20s. She has a wonderful smile that really lights up the photo. She's holding what looks like a biology textbook—she looks smart and determined."
 """
-    client = genai.Client(api_key=config.GEMINI_API_KEY)
+    try:
+        gemini_client = genai.Client(api_key=config.GEMINI_API_KEY)
 
-    with open(image_path, "rb") as f:
-        image_data = f.read()
+        with open(image_path, "rb") as f:
+            image_data = f.read()
 
-    contents = [
-        types.Content(
-            role="user",
-            parts=[
-                types.Part.from_text(text=proper_query),
-                types.Part(
-                    inline_data=types.Blob(
-                        mime_type="image/jpeg",
-                        data=image_data,
-                    )
-                ),
+        contents = [
+            types.Content(
+                role="user",
+                parts=[
+                    types.Part.from_text(text=proper_query),
+                    types.Part(
+                        inline_data=types.Blob(
+                            mime_type="image/jpeg",
+                            data=image_data,
+                        )
+                    ),
+                ],
+            ),
+        ]
+
+        generate_content_config = types.GenerateContentConfig(
+            system_instruction=[
+                types.Part.from_text(text=system_instruction),
             ],
-        ),
-    ]
+        )
 
-    generate_content_config = types.GenerateContentConfig(
-        system_instruction=[
-            types.Part.from_text(text=system_instruction),
-        ],
-    )
+        response_text = ""
+        for chunk in gemini_client.models.generate_content_stream(
+            model="models/gemini-2.0-flash",
+            contents=contents,
+            config=generate_content_config,
+        ):
+            if chunk.text:
+                response_text += chunk.text
 
-    response_text = ""
-    for chunk in client.models.generate_content_stream(
-        model="models/gemini-2.0-flash",
-        contents=contents,
-        config=generate_content_config,
-    ):
-        if chunk.text:
-            print(chunk.text, end="", flush=True)
-            response_text += chunk.text
-
-    return response_text
-
-
-def save_response(prompt: str, response: str) -> None:
-    """
-        }
-    )
-
-    # Save the updated data back to the file
-    with open(filename, "w") as f:
-        json.dump(data_dict, f, indent=2)
+        return response_text
+    except Exception as e:
+        print(f"Visual Analysis Error: {e}")
+        return "I'm having trouble seeing clearly right now."

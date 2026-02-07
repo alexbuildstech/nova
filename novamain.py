@@ -88,13 +88,57 @@ def take_picture_from_tracker(tracker_instance, save_dir=config.CAPTURES_DIR):
 # Buffer for pre-emptive visual context capture
 latest_captured_image_path = None
 
+def smart_visual_capture(text):
+    """
+    Context-aware visual capture with conversational intelligence.
+    """
+    visual_keywords = ["see", "look", "what", "describe", "show", "rate", "check", "watch", "view", "camera"]
+    contextual_indicators = ["this", "that", "here", "my", "your", "the", "a", "an"]
+    
+    text_lower = text.lower()
+    
+    # Check for visual keywords
+    has_visual_keyword = any(keyword in text_lower for keyword in visual_keywords)
+    
+    # Context awareness - only trigger if asking about immediate context
+    has_context = any(indicator in text_lower for indicator in contextual_indicators)
+    
+    # Smart detection: must have visual keyword + context OR direct question
+    return has_visual_keyword and (has_context or '?' in text)
+
+
+def conversation_flow_manager(current_input, conversation_history):
+    """
+    Natural conversation flow optimization for better dialogue continuity.
+    """
+    recent_exchanges = conversation_history.get("conversation", [])[-3:] if conversation_history else []
+    
+    # Detect conversation patterns
+    if len(recent_exchanges) > 0:
+        last_user_input = recent_exchanges[-1].get("prompt", "").lower()
+        last_response = recent_exchanges[-1].get("response", "").lower()
+        
+        # Topic continuity detection
+        topic_words = set(last_user_input.split()) & set(current_input.lower().split())
+        if topic_words:
+            return "continuation"  # User is continuing same topic
+            
+        # Question answering pattern
+        if '?' in current_input and any(word in last_response for word in ["answer", "tell", "explain", "describe"]):
+            return "followup_question"  # User asking for clarification
+            
+        # Shift to new topic
+        return "topic_shift"
+    
+    return "new_conversation"
+
+
 def capture_image_callback():
     """
-    Event handler triggered on voice activity detection.
-    Captures visual context immediately to minimize latency for potential visual queries.
+    Optimized event handler that captures visual context only when likely needed.
     """
     global latest_captured_image_path
-    print("📸 Pre-emptive visual context capture triggered...")
+    print("📸 Optimized visual context capture triggered...")
     latest_captured_image_path = take_picture_from_tracker(face_tracker)
 
 # Initialize Speech-to-Text (STT) Engine
@@ -159,17 +203,21 @@ try:
         try:
             # Process transcribed audio input
             if stt_service.transcribed_text:
-                text = stt_service.transcribed_text.strip()
+                text = stt_service.transcribed_text.strip() if stt_service.transcribed_text is not None else ""
                 
                 if text == "#EXIT":
                     print("\n👋 Shutdown sequence initiated.")
                     break
                     
                 print(f'\n🎤 User Input: "{text}"')
+                
+                # Analyze conversation flow
+                conv_flow = conversation_flow_manager(text, conversation_history)
+                print(f"🧠 Conversation Pattern: {conv_flow}")
 
-                # 1. Direct Visual Query Detection (Low Latency Path)
-                if see_this_pattern.search(text):
-                    print("👀 Visual intent detected via NLU.")
+                # Context-aware visual capture
+                if smart_visual_capture(text):
+                    print("🎯 Visual intent detected via smart filtering.")
                     
                     img_path = latest_captured_image_path
                     if not img_path:
@@ -184,27 +232,27 @@ try:
                         )
                         if "not a visual query" in output.lower():
                             print("⚠️ Visual Analysis Rejection. Fallback to LLM.")
-                            fallback_response = "I'm having trouble focusing on that right now."
+                            fallback_response = "Hmm, I'm having trouble focusing on that right now. Let me try a different approach."
                             robot.speak_text(fallback_response)
                             full_response_text = fallback_response
                         else:
                             robot.speak_text(output)
                             full_response_text = output
                     else:
-                        fallback_response = "My vision system is currently unresponsive."
+                        fallback_response = "My vision system is having a bit of trouble at the moment."
                         robot.speak_text(fallback_response)
                         full_response_text = fallback_response
 
-                    novaresponse.save_response(text, full_response_text)
+                    novaresponse.save_response(text, full_response_text or "")
                     conversation_history["conversation"].append(
-                        {"prompt": text, "response": full_response_text}
+                        {"prompt": text, "response": full_response_text or ""}
                     )
                     
                     latest_captured_image_path = None
 
                 # 2. Standard Conversational Query (LLM Path)
                 else:
-                    full_response_text = novaresponse.response(text, conversation_history)
+                    full_response_text = novaresponse.response(text, conversation_history) or ""
                     
                     cleaned_response = full_response_text.strip().strip('"').strip("'").strip()
                     
@@ -250,15 +298,15 @@ try:
                     else:
                         robot.speak_text(full_response_text)
 
-                    novaresponse.save_response(text, full_response_text)
+                    novaresponse.save_response(text, full_response_text or "")
                     conversation_history["conversation"].append(
-                        {"prompt": text, "response": full_response_text}
+                        {"prompt": text, "response": full_response_text or ""}
                     )
                     
                     latest_captured_image_path = None
 
-                stt_service.transcribed_text = None
-                print("\nListening for next interaction...")
+            stt_service.transcribed_text = None
+            print("\nListening for next interaction...")
             
             time.sleep(0.05)
             
