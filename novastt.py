@@ -140,6 +140,12 @@ class SpeechToText:
         except Exception as e:
             print(f"❌ Transcription Error: {e}")
 
+    def stop_listener(self):
+        """Stops the audio stream and transcription thread."""
+        self.is_running = False
+        # The sounddevice stream is not stored as an attribute in start_listener in the current code
+        # I should modify start_listener to store it.
+
     def start_listener(self):
         """Starts the non-blocking background audio monitor."""
         if not self.client:
@@ -148,16 +154,20 @@ class SpeechToText:
         print(f"✅ STT Listener Active (Threshold: {self.threshold})")
         
         # Start the sounddevice stream with ultra-low latency
-        stream = sd.InputStream(
+        self.stream = sd.InputStream(
             samplerate=self.samplerate,
             channels=self.channels,
             callback=self._audio_callback,
             blocksize=int(self.samplerate * 0.025)  # 25ms chunks for minimal latency
         )
-        stream.start()
+        self.stream.start()
         
-        # Keep the thread alive if needed, or rely on main thread
-        # In Nova, novamain.py keeps the process alive.
+    def stop_listener(self):
+        """Stops the audio stream."""
+        if hasattr(self, 'stream') and self.stream:
+            self.stream.stop()
+            self.stream.close()
+            print("🛑 STT Listener Deactivated.")
 
 if __name__ == "__main__":
     # Test block

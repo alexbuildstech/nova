@@ -324,6 +324,7 @@ finally:
     # --- SYSTEM SHUTDOWN PROTOCOL ---
     print("Initiating system shutdown...")
 
+    stt_service.stop_listener()
     face_tracker.stop()
     robot.shutdown()
 
