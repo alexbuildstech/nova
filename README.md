@@ -90,9 +90,10 @@ Robotics at this scale is inherently prone to failure. Nova acknowledges the fol
    git clone https://github.com/alexbuildstech/nova.git
    cd nova
    ```
-2. Install dependencies:
+2. Run the setup script (automatically handles dependencies and compiler settings):
    ```bash
-   pip install -r requirements.txt
+   chmod +x setup.sh
+   ./setup.sh
    ```
 3. Configure your environment:
    Edit `config.py` with your API keys and hardware ports.

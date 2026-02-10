@@ -151,16 +151,31 @@ class SpeechToText:
         if not self.client:
             return
 
-        print(f"✅ STT Listener Active (Threshold: {self.threshold})")
+        print(f"✅ STT Listener Active (Requested Rate: {self.samplerate})")
         
-        # Start the sounddevice stream with ultra-low latency
-        self.stream = sd.InputStream(
-            samplerate=self.samplerate,
-            channels=self.channels,
-            callback=self._audio_callback,
-            blocksize=int(self.samplerate * 0.025)  # 25ms chunks for minimal latency
-        )
-        self.stream.start()
+        try:
+            # Start the sounddevice stream with ultra-low latency
+            self.stream = sd.InputStream(
+                samplerate=self.samplerate,
+                channels=self.channels,
+                callback=self._audio_callback,
+                blocksize=int(self.samplerate * 0.025)  # 25ms chunks for minimal latency
+            )
+            self.stream.start()
+        except Exception as e:
+            print(f"⚠️ Initial samplerate {self.samplerate} failed: {e}. Trying 44100...")
+            try:
+                self.samplerate = 44100
+                self.stream = sd.InputStream(
+                    samplerate=self.samplerate,
+                    channels=self.channels,
+                    callback=self._audio_callback,
+                    blocksize=int(self.samplerate * 0.025)
+                )
+                self.stream.start()
+                print(f"✅ STT Listener Active (Fallback Rate: {self.samplerate})")
+            except Exception as e2:
+                print(f"❌ STT Listener failed completely: {e2}")
         
     def stop_listener(self):
         """Stops the audio stream."""

@@ -8,38 +8,92 @@ from google import genai
 from google.genai import types
 import config
 import cv2
-import chromadb
+import numpy as np
+import pickle
 
 class NovaMemory:
     """
-    Local Vector Database for Nova's long-term memory using ChromaDB.
-    Replaces the previous JSON-based memory storage.
+    Local Vector Database for Nova's long-term memory using Gemini Embeddings and Numpy.
+    Highly compatible with Python 3.14+ and headless environments.
     """
     def __init__(self):
-        self.client = chromadb.PersistentClient(path=config.MEMORY_PATH)
-        self.collection = self.client.get_or_create_collection(name="nova_long_term")
+        self.path = config.MEMORY_PATH
+        self.vectors_file = os.path.join(self.path, "vectors.npy")
+        self.metadata_file = os.path.join(self.path, "metadata.pkl")
+        self.gemini_client = genai.Client(api_key=config.GEMINI_API_KEY)
+        
+        if not os.path.exists(self.path):
+            os.makedirs(self.path)
+            
+        self.vectors = np.zeros((0, 768)) # Gemini embeddings are 768-dim
+        self.memories = []
+        self._load()
 
-    def add_memories(self, memories):
-        if not memories:
+    def _load(self):
+        if os.path.exists(self.vectors_file) and os.path.exists(self.metadata_file):
+            try:
+                self.vectors = np.load(self.vectors_file)
+                with open(self.metadata_file, "rb") as f:
+                    self.memories = pickle.load(f)
+            except Exception as e:
+                print(f"Memory Load Error: {e}")
+
+    def _save(self):
+        try:
+            np.save(self.vectors_file, self.vectors)
+            with open(self.metadata_file, "wb") as f:
+                pickle.dump(self.memories, f)
+        except Exception as e:
+            print(f"Memory Save Error: {e}")
+
+    def _get_embedding(self, text):
+        try:
+            result = self.gemini_client.models.embed_content(
+                model="text-embedding-004",
+                contents=text
+            )
+            return np.array(result.embeddings[0].values)
+        except Exception as e:
+            print(f"Embedding Error: {e}")
+            return None
+
+    def add_memories(self, new_memories):
+        if not new_memories:
             return
-        ts = int(time.time())
-        ids = [f"mem_{ts}_{i}" for i in range(len(memories))]
-        self.collection.add(
-            documents=memories,
-            ids=ids
-        )
+        
+        new_vecs = []
+        valid_memories = []
+        
+        for m in new_memories:
+            vec = self._get_embedding(m)
+            if vec is not None:
+                new_vecs.append(vec)
+                valid_memories.append(m)
+        
+        if new_vecs:
+            if self.vectors.shape[0] == 0:
+                self.vectors = np.array(new_vecs)
+            else:
+                self.vectors = np.vstack([self.vectors, new_vecs])
+            self.memories.extend(valid_memories)
+            self._save()
 
     def query_memories(self, query, n_results=5):
-        try:
-            results = self.collection.query(
-                query_texts=[query],
-                n_results=n_results
-            )
-            # Flatten the list of documents
-            return [doc for sublist in results['documents'] for doc in sublist] if results['documents'] else []
-        except Exception as e:
-            print(f"Memory Query Error: {e}")
+        if self.vectors.shape[0] == 0:
             return []
+            
+        query_vec = self._get_embedding(query)
+        if query_vec is None:
+            return []
+            
+        # Cosine similarity
+        norm_vectors = self.vectors / np.linalg.norm(self.vectors, axis=1, keepdims=True)
+        norm_query = query_vec / np.linalg.norm(query_vec)
+        similarities = np.dot(norm_vectors, norm_query)
+        
+        # Get top indices
+        top_indices = np.argsort(similarities)[::-1][:n_results]
+        return [self.memories[i] for i in top_indices if similarities[i] > 0.3]
 
 # Global memory instance
 memory_db = NovaMemory()

@@ -7,3 +7,5 @@ pynput
 numpy
 flask
 requests
+edge-tts
+pydub
