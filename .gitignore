@@ -4,3 +4,4 @@ __pycache__/
 chat_log.json
 conversation_history.json
 .env
+nova_memory/

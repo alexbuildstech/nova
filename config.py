@@ -69,3 +69,10 @@ MICRO_EXPRESSION_COOLDOWN = 3.0     # Minimum seconds between micro-expressions
 CHAT_LOG_FILE = "chat_log.json"
 CONVERSATION_HISTORY_FILE = "conversation_history.json"
 CAPTURES_DIR = "captures"
+
+# --- MODEL CONFIGURATION ---
+MAIN_MODEL = "openai/gpt-oss-20b"
+SEARCH_MODEL = "gemini-flash-lite-latest"
+VISION_MODEL = "models/gemini-2.0-flash"
+MEMORY_MODEL = "openai/gpt-oss-20b"
+MEMORY_PATH = "nova_memory"

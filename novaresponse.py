@@ -8,6 +8,41 @@ from google import genai
 from google.genai import types
 import config
 import cv2
+import chromadb
+
+class NovaMemory:
+    """
+    Local Vector Database for Nova's long-term memory using ChromaDB.
+    Replaces the previous JSON-based memory storage.
+    """
+    def __init__(self):
+        self.client = chromadb.PersistentClient(path=config.MEMORY_PATH)
+        self.collection = self.client.get_or_create_collection(name="nova_long_term")
+
+    def add_memories(self, memories):
+        if not memories:
+            return
+        ts = int(time.time())
+        ids = [f"mem_{ts}_{i}" for i in range(len(memories))]
+        self.collection.add(
+            documents=memories,
+            ids=ids
+        )
+
+    def query_memories(self, query, n_results=5):
+        try:
+            results = self.collection.query(
+                query_texts=[query],
+                n_results=n_results
+            )
+            # Flatten the list of documents
+            return [doc for sublist in results['documents'] for doc in sublist] if results['documents'] else []
+        except Exception as e:
+            print(f"Memory Query Error: {e}")
+            return []
+
+# Global memory instance
+memory_db = NovaMemory()
 
 # Initialize Groq Client for Large Language Model operations
 client = Groq(api_key=config.GROQ_API_KEY)
@@ -24,7 +59,11 @@ def search_response(query, history):
     try:
         gemini_client = genai.Client(api_key=config.GEMINI_API_KEY)
         
-        context_str = ""
+        # Query long term memory for relevant context
+        long_term_context = memory_db.query_memories(query, n_results=3)
+        ltm_str = "\n".join([f"- {m}" for m in long_term_context]) if long_term_context else "None"
+        
+        context_str = f"RELEVANT LONG-TERM MEMORY:\n{ltm_str}\n\n"
         if history:
             context_str += "SHORT TERM MEMORY:\n" + "\n".join(history.get("short_term", [])) + "\n\n"
             context_str += "CONVERSATION:\n"
@@ -33,7 +72,7 @@ def search_response(query, history):
         
         full_prompt = f"{context_str}\nUser Query: {query}\n\nProvide a helpful, concise answer based on the Google Search results. Maintain the persona of Nova (Ameca-style: grounded, witty, human-like)."
 
-        model = "gemini-flash-lite-latest"
+        model = config.SEARCH_MODEL
         contents = [
             types.Content(
                 role="user",
@@ -124,14 +163,18 @@ async def response_parallel(query, history, executor=None):
     loop = asyncio.get_event_loop()
     system_prompt = get_system_prompt()
     
+    # Fetch relevant long-term memories
+    long_term_context = memory_db.query_memories(query, n_results=3)
+    ltm_str = "\n".join([f"- {m}" for m in long_term_context]) if long_term_context else "None"
+    
     def call_llm():
         return client.chat.completions.create(
-            model="openai/gpt-oss-20b",
+            model=config.MAIN_MODEL,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {
                     "role": "user",
-                    "content": f"query - {query}, conversation_history - {history}",
+                    "content": f"RELEVANT LONG-TERM MEMORY:\n{ltm_str}\n\nCONVERSATION HISTORY:\n{history}\n\nUSER QUERY: {query}",
                 },
             ],
             stream=False
@@ -151,14 +194,18 @@ async def response_streaming(query, history, executor=None):
     loop = asyncio.get_event_loop()
     system_prompt = get_system_prompt()
     
+    # Fetch relevant long-term memories
+    long_term_context = memory_db.query_memories(query, n_results=3)
+    ltm_str = "\n".join([f"- {m}" for m in long_term_context]) if long_term_context else "None"
+    
     def call_llm_stream():
         return client.chat.completions.create(
-            model="openai/gpt-oss-20b",
+            model=config.MAIN_MODEL,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {
                     "role": "user", 
-                    "content": f"query - {query}, conversation_history - {history}",
+                    "content": f"RELEVANT LONG-TERM MEMORY:\n{ltm_str}\n\nCONVERSATION HISTORY:\n{history}\n\nUSER QUERY: {query}",
                 },
             ],
             stream=True
@@ -294,11 +341,10 @@ def long_term_memory_converter():
     ]
 
     updated_short_memory = list(current_short_memory)
-    updated_long_memory = list(current_long_memory)
 
     try:
         completion = client.chat.completions.create(
-            model="openai/gpt-oss-20b",
+            model=config.MEMORY_MODEL,
             messages=messages,
             temperature=0.5,
             response_format={"type": "json_object"},
@@ -307,10 +353,13 @@ def long_term_memory_converter():
         memory_json = json.loads(llm_response_content)
         updated_short_memory = memory_json.get("short_term", [])[:5]
         new_long_items = memory_json.get("long_term", [])
-        for item in new_long_items:
-            if item not in updated_long_memory:
-                updated_long_memory.append(item)
-        updated_long_memory = updated_long_memory[:15]
+        
+        # Replace JSON list with Vector DB storage
+        if new_long_items:
+            memory_db.add_memories(new_long_items)
+            print(f"LTM: Added {len(new_long_items)} items to vector database.")
+        
+        # Clear old turns and save updated short term memory
     except Exception as e:
         print(f"LTM Converter Error: {e}")
 
@@ -319,7 +368,7 @@ def long_term_memory_converter():
             json.dump(
                 {
                     "short_term": updated_short_memory,
-                    "long_term": updated_long_memory,
+                    "long_term": [], # No longer using JSON list for LTM
                     "conversation": [],
                 },
                 f,
@@ -328,7 +377,7 @@ def long_term_memory_converter():
     except Exception as e:
         print(f"LTM Converter: Error saving memory: {e}")
 
-    return updated_short_memory, updated_long_memory
+    return updated_short_memory, []
 
 
 def query_with_image(query, conversation_history, image_path) -> str:
@@ -387,7 +436,7 @@ PERSONALITY:
 
         response_text = ""
         for chunk in gemini_client.models.generate_content_stream(
-            model="models/gemini-2.0-flash",
+            model=config.VISION_MODEL,
             contents=contents,
             config=generate_content_config,
         ):
