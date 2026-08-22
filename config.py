@@ -3,8 +3,7 @@
 import os
 
 # --- API KEYS ---
-# You can set these in your environment variables or paste them directly here.
-# WARNING: Do not share this file publicly if you paste real keys here.
+# Set these in your environment variables or paste them directly here.
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "YOUR_GROQ_API_KEY_HERE")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "YOUR_GEMINI_API_KEY_HERE")
 

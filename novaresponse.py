@@ -7,7 +7,6 @@ from groq import Groq
 from google import genai
 from google.genai import types
 import config
-import cv2
 import numpy as np
 import pickle
 

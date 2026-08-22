@@ -26,7 +26,7 @@ Nova operates across three primary domains: **Physical Control**, **Real-time Pe
 graph TD
     subgraph "Perception Layer"
         V["USB Camera"] --> FT["FaceTracker Thread (OpenCV SSD)"]
-        FT --> PC["PID Controller"]
+        FT --> PC["Proportional Servo Control"]
         FT --> VC["Visual Context Buffer (Gemini Flash)"]
     end
 
@@ -50,8 +50,8 @@ graph TD
 ```
 
 ### Key Components
-- **`FaceTracker` (Threaded)**: Employs a Caffe-based SSD detector to maintain low-latency gaze tracking. PID loops calculate servo trajectories to minimize jitter.
-- **`Animatronic` Module**: Manages the serial ACK/NAK flow control protocol with Arduino Mega. It synchronized Edge-TTS audio streams with heuristic jaw movements.
+- **`FaceTracker` (Threaded)**: Employs a Caffe-based SSD detector to maintain low-latency gaze tracking. A proportional controller with rate limiting converts face position error into smooth servo trajectories.
+- **`Animatronic` Module**: Manages serial communication with the Arduino Mega using ACK-based flow control, with command batching for servo updates. It synchronizes Edge-TTS audio streams with heuristic jaw movements.
 - **`LLM Orchestrator`**: Routes prompts through Groq (for conversation) and Gemini 2.0 Flash (for visual reasoning). It uses regex-based NLU to trigger functional calls like `#VISUAL` or `#SEARCH`.
 
 ---
@@ -60,10 +60,10 @@ graph TD
 
 | Choice | Rationale | Trade-off |
 | :--- | :--- | :--- |
-| **Groq (Llama-3/20B)** | Chosen for <500ms TTFT (Time To First Token) to maintain conversational flow. | Dependency on cloud infrastructure and API availability. |
+| **Groq (gpt-oss-20b)** | Fast time-to-first-token to maintain conversational flow. | Dependency on cloud infrastructure and API availability. |
 | **Gemini 2.0 Flash** | Native multi-modal support allows for direct image-to-text analysis without separate captioning models. | Higher latency than local vision; requires active internet connection. |
 | **Edge-TTS** | High-fidelity neural voices without the overhead of local WaveNet models. | Slightly higher latency than simple eSpeak; requires internet. |
-| **PID Gaze Control** | Prevents aggressive servo "hunting" and provides smoother humanoid-like motion. | Requires manual tuning for different servo hardware. |
+| **Rate-limited proportional gaze control** | Prevents aggressive servo "hunting" and provides smoother humanoid-like motion. | Requires manual tuning for different servo hardware. |
 
 ---
 
@@ -82,7 +82,7 @@ Robotics at this scale is inherently prone to failure. Nova acknowledges the fol
 
 ### Prerequisites
 - **Hardware**: InMoov Head/Neck assembly, Arduino Mega, USB Webcam, Microphone.
-- **Software**: Python 3.12+, `ffmpeg`, Groq & Google Generative AI API Keys.
+- **Software**: Python 3, `mpv` (or `ffmpeg`/`mpg123`) for audio playback, Groq & Google Generative AI API Keys.
 
 ### Installation
 1. Clone the repository:

@@ -140,12 +140,6 @@ class SpeechToText:
         except Exception as e:
             print(f"❌ Transcription Error: {e}")
 
-    def stop_listener(self):
-        """Stops the audio stream and transcription thread."""
-        self.is_running = False
-        # The sounddevice stream is not stored as an attribute in start_listener in the current code
-        # I should modify start_listener to store it.
-
     def start_listener(self):
         """Starts the non-blocking background audio monitor."""
         if not self.client:

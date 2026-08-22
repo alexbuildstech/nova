@@ -10,12 +10,10 @@ import serial
 import serial.tools.list_ports
 import random
 import re
-import asyncio
 import math  # For breathing rhythm calculations
 from pynput import keyboard
 from edge_tts import Communicate
 from pydub import AudioSegment
-from pydub.utils import make_chunks
 import config
 
 class Animatronic:
