@@ -64,7 +64,7 @@ class Animatronic:
             if port.vid is not None:
                 vid_hex = f"{port.vid:04X}"
                 if vid_hex in arduino_vids:
-                    print(f"✅ Arduino detected on port: {port.device} ({port.description})")
+                    print(f"[OK] Arduino detected on port: {port.device} ({port.description})")
                     return port.device
         return None
 
@@ -84,15 +84,15 @@ class Animatronic:
         if final_port:
             try:
                 self._serial_port = serial.Serial(final_port, self.BAUD_RATE, timeout=2)
-                print(f"✅ Serial connection established: {final_port}")
+                print(f"[OK] Serial connection established: {final_port}")
                 time.sleep(2)  # Arduino reset delay
                 self._serial_port.reset_input_buffer()
-                print("🛑 Send 'STOP' to halt, 'L' for center neck.")
+                print("Send 'STOP' to halt, 'L' for center neck.")
             except serial.SerialException as e:
-                print(f"❌ Serial error: {e}. Running in AUDIO-ONLY mode.")
+                print(f"[ERROR] Serial error: {e}. Running in AUDIO-ONLY mode.")
                 self._serial_port = None
         else:
-            print("⚠️ No Arduino found. Running in AUDIO-ONLY mode.")
+            print("[WARNING] No Arduino found. Running in AUDIO-ONLY mode.")
         
         self._stop_threads.clear()
         threading.Thread(target=self._serial_worker, daemon=True).start()
@@ -107,7 +107,7 @@ class Animatronic:
         threading.Thread(target=self._idle_drift_generator, daemon=True).start()
         threading.Thread(target=self._attention_decay_generator, daemon=True).start()
         threading.Thread(target=self._emotional_micro_expression_generator, daemon=True).start()
-        print("✅ Subconscious micro-movement threads started (7 systems: micro-saccades, breathing, twitches, blinking, drift, attention, emotions)")
+        print("[OK] Subconscious micro-movement threads started (7 systems: micro-saccades, breathing, twitches, blinking, drift, attention, emotions)")
         return True
 
     def _serial_worker(self):
@@ -182,7 +182,7 @@ class Animatronic:
                 
                 # Priority 1: Emergency stop (esc key)
                 if hasattr(key, 'name') and key.name == 'esc':
-                    print("\n🛑 EMERGENCY STOP - Immediately halting all operations")
+                    print("\nEMERGENCY STOP - Immediately halting all operations")
                     self._emergency_interrupted.set()
                     self._interrupted.set()
                     if self._player_process: 
@@ -200,7 +200,7 @@ class Animatronic:
                 if hasattr(key, 'char') and key.char in ['p', ' ']:
                     if self._is_speaking.is_set():
                         self._last_interrupt_time = current_time
-                        print("\n🗣️ Conversation interrupted. Listening to user...")
+                        print("\nConversation interrupted. Listening to user...")
                         self._interrupted.set()
                         
                         # Safe termination with timeout
@@ -223,19 +223,19 @@ class Animatronic:
                 # Conversation gestures with debouncing
                 if hasattr(key, 'char'):
                     if key.char == 'l':
-                        print("\n👀 Looking at you...")
+                        print("\nLooking at you...")
                         self._command_queue.put((1, "x 85"))
                         self._command_queue.put((1, "z 120"))
                         self._command_queue.put((1, "y 88"))
                         
                     elif key.char == 'n':
-                        print("\n🤔 Pondering...")
+                        print("\nPondering...")
                         self._command_queue.put((1, "x 95"))
                         self._command_queue.put((1, "z 100"))
                         self._command_queue.put((1, "jaw 40"))
                         
                     elif key.char == 'y':
-                        print("\n😊 Acknowledging...")
+                        print("\nAcknowledging...")
                         self._command_queue.put((1, "y 85"))
                         time.sleep(0.1)
                         self._command_queue.put((1, "y 88"))
@@ -243,7 +243,7 @@ class Animatronic:
                         self._command_queue.put((1, "z 115"))
                         
                     elif key.char == 'u':
-                        print("\n🤷 Uncertain...")
+                        print("\nUncertain...")
                         self._command_queue.put((1, "x 95"))
                         self._command_queue.put((1, "z 140"))
                         self._command_queue.put((1, "y 92"))
@@ -513,7 +513,7 @@ class Animatronic:
         # Filter out emojis
         text_to_speak = re.sub(r'[\U00010000-\U0010ffff]', '', text_to_speak)
         
-        print(f"▶️ Speaking: \"{text_to_speak}\"")
+        print(f"Speaking: \"{text_to_speak}\"")
         print("   [Press: SPACE/p=interrupt, ESC=emergency, l/n/y/u=gestures]")
         
         self._command_queue.queue.clear()
@@ -552,18 +552,18 @@ class Animatronic:
                     player_process.kill()
                     
         except Exception as e:
-            print(f"❌ Error in speak_text: {e}")
+            print(f"Error in speak_text: {e}")
             
         finally:
             self._is_speaking.clear()
             self._stop_interrupt_listener()
             self._command_queue.put((2, f"z {self.EYE_V_MID}"))
             self._command_queue.put((1, f"jaw {self.JAW_CLOSE_ANGLE}"))
-            print("✅ Speech complete.\n")
+            print("[OK] Speech complete.\n")
 
     def stop_speech(self):
         """Enhanced speech stop with edge case handling and graceful recovery."""
-        print("\n🛑 Stop command received. Gracefully halting speech...")
+        print("\nStop command received. Gracefully halting speech...")
         
         self._interrupted.set()
         self._emergency_interrupted.set()
@@ -574,7 +574,7 @@ class Animatronic:
                 self._player_process.terminate()
                 time.sleep(0.15)
                 if self._player_process.poll() is None:
-                    print("⚠️ Force killing stuck audio process...")
+                    print("[WARNING] Force killing stuck audio process...")
                     self._player_process.kill()
                     time.sleep(0.05)
             except Exception as e:
@@ -588,7 +588,7 @@ class Animatronic:
         
         self._interrupted.clear()
         self._emergency_interrupted.clear()
-        print("✅ Ready for next interaction.")
+        print("[OK] Ready for next interaction.")
 
     def stream_text(self, text_generator):
         """Consumes a generator yielding text chunks with natural buffering."""
@@ -599,7 +599,7 @@ class Animatronic:
         
         for chunk in text_generator:
             if self._interrupted.is_set():
-                print("⚠️ Stream interrupted. Stopping text processing.")
+                print("[WARNING] Stream interrupted. Stopping text processing.")
                 break
                 
             buffer += chunk
@@ -637,7 +637,7 @@ class Animatronic:
         Humans make these constantly (every ~200ms) but they're barely perceptible.
         This prevents the "dead stare" effect of fixed eyes.
         """
-        print("👁️ Micro-saccade generator started (subconscious eye movements)")
+        print("Micro-saccade generator started (subconscious eye movements)")
         base_x, base_y = 85, 130
         
         while not self._stop_threads.is_set():
@@ -665,7 +665,7 @@ class Animatronic:
         Creates a rhythmic, life-like motion that humans subconsciously expect.
         Cycle: 4 seconds (inhale/exhale pattern)
         """
-        print("🫁 Breathing rhythm generator started")
+        print("Breathing rhythm generator started")
         breath_phase = 0.0  # 0 to 2π
         
         while not self._stop_threads.is_set():
@@ -691,7 +691,7 @@ class Animatronic:
         Small, quick movements that suggest neural activity and muscle tone.
         Happens randomly every ~30-50 seconds on average.
         """
-        print("⚡ Subconscious twitch generator started")
+        print("Subconscious twitch generator started")
         
         while not self._stop_threads.is_set():
             # Random check every second
@@ -728,7 +728,7 @@ class Animatronic:
         - Longer blinks when "thinking"
         - Cluster blinks (several in short succession)
         """
-        print("😉 Natural blink generator started")
+        print("Natural blink generator started")
         
         while not self._stop_threads.is_set():
             # Random interval between blinks (2.5 to 6 seconds)
@@ -764,7 +764,7 @@ class Animatronic:
         Prevents the statue-like frozen stare.
         Speed: ~0.3 degrees per second (very slow, barely perceptible)
         """
-        print("🌊 Idle drift generator started")
+        print("Idle drift generator started")
         
         drift_x, drift_y = 85, 130
         target_x, target_y = 85, 130
@@ -793,7 +793,7 @@ class Animatronic:
         Creates micro-movements suggesting the robot is "alive" and aware.
         Movement gets more random over time when idle.
         """
-        print("🎯 Attention decay generator started")
+        print("Attention decay generator started")
         
         idle_time = 0
         base_x, base_y = 85, 130
@@ -831,7 +831,7 @@ class Animatronic:
         - Micro-nods (agreement/understanding)
         - Slight head tilts (curiosity)
         """
-        print("🎭 Emotional micro-expression generator started")
+        print("Emotional micro-expression generator started")
         
         expression_cooldown = 0
         
@@ -922,4 +922,4 @@ class Animatronic:
             self._serial_port.close()
             
         time.sleep(0.5)
-        print("✅ Animatronic shutdown complete.")
+        print("[OK] Animatronic shutdown complete.")

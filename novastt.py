@@ -42,7 +42,7 @@ class SpeechToText:
             client = Groq(api_key=config.GROQ_API_KEY)
             return client
         except Exception as e:
-            print(f"❌ Groq Init Error: {e}")
+            print(f"[ERROR] Groq Init Error: {e}")
             return None
 
     def _get_energy(self, audio_chunk):
@@ -56,7 +56,7 @@ class SpeechToText:
     def _audio_callback(self, indata, frames, time_info, status):
         """Optimized audio callback with pre-buffering and adaptive thresholds."""
         if status:
-            print(f"⚠️ Audio Status: {status}")
+            print(f"[WARNING] Audio Status: {status}")
         
         # Add to prebuffer always
         self.prebuffer.extend(indata.copy().flatten())
@@ -67,14 +67,14 @@ class SpeechToText:
             if len(self.noise_samples) == self.max_noise_samples:
                 self.ambient_noise_level = np.mean(self.noise_samples)
                 self.threshold = self.adaptive_vad_threshold(self.ambient_noise_level)
-                print(f"🎚️ Adaptive threshold set: {self.threshold:.1f}")
+                print(f"Adaptive threshold set: {self.threshold:.1f}")
             
         energy = self._get_energy(indata)
         adaptive_threshold = self.adaptive_vad_threshold(self.ambient_noise_level) if self.ambient_noise_level > 0 else self.threshold
         
         if energy > adaptive_threshold:
             if not self.is_recording:
-                print("🎙️ Voice Detected. Recording...")
+                print("Voice Detected. Recording...")
                 self.is_recording = True
                 if self.on_record_start:
                     self.on_record_start()
@@ -93,7 +93,7 @@ class SpeechToText:
             if self.silence_start is None:
                 self.silence_start = time.time()
             elif time.time() - self.silence_start > self.silence_limit:
-                print("⏹️ Silence Detected. Processing...")
+                print("Silence Detected. Processing...")
                 self.is_recording = False
                 self._process_recording()
 
@@ -135,17 +135,17 @@ class SpeechToText:
             if hasattr(transcription, 'text') and transcription.text:
                 text = transcription.text.strip()
                 if text:
-                    print(f"📝 Transcribed: \"{text}\"")
+                    print(f"Transcribed: \"{text}\"")
                     self.transcribed_text = text
         except Exception as e:
-            print(f"❌ Transcription Error: {e}")
+            print(f"[ERROR] Transcription Error: {e}")
 
     def start_listener(self):
         """Starts the non-blocking background audio monitor."""
         if not self.client:
             return
 
-        print(f"✅ STT Listener Active (Requested Rate: {self.samplerate})")
+        print(f"[OK] STT Listener Active (Requested Rate: {self.samplerate})")
         
         try:
             # Start the sounddevice stream with ultra-low latency
@@ -157,7 +157,7 @@ class SpeechToText:
             )
             self.stream.start()
         except Exception as e:
-            print(f"⚠️ Initial samplerate {self.samplerate} failed: {e}. Trying 44100...")
+            print(f"[WARNING] Initial samplerate {self.samplerate} failed: {e}. Trying 44100...")
             try:
                 self.samplerate = 44100
                 self.stream = sd.InputStream(
@@ -167,16 +167,16 @@ class SpeechToText:
                     blocksize=int(self.samplerate * 0.025)
                 )
                 self.stream.start()
-                print(f"✅ STT Listener Active (Fallback Rate: {self.samplerate})")
+                print(f"[OK] STT Listener Active (Fallback Rate: {self.samplerate})")
             except Exception as e2:
-                print(f"❌ STT Listener failed completely: {e2}")
+                print(f"[ERROR] STT Listener failed completely: {e2}")
         
     def stop_listener(self):
         """Stops the audio stream."""
         if hasattr(self, 'stream') and self.stream:
             self.stream.stop()
             self.stream.close()
-            print("🛑 STT Listener Deactivated.")
+            print("STT Listener Deactivated.")
 
 if __name__ == "__main__":
     # Test block

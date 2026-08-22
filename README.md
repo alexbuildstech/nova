@@ -4,7 +4,7 @@ Nova is an experimental software framework designed to bridge multi-modal Large 
 
 ---
 
-## 🤝 Partners & Acknowledgments
+## Partners & Acknowledgments
 
 This research is made possible through the support of industry partners providing the core infrastructure for Nova:
 
@@ -17,7 +17,7 @@ This research is made possible through the support of industry partners providin
 > [!NOTE]
 > This project is a technical experiment in robotics integration. It is subject to network latency, mechanical variance, and the probabilistic nature of LLMs.
 
-## 🏗️ System Architecture
+## System Architecture
 
 Nova operates across three primary domains: **Physical Control**, **Real-time Perception**, and **Cognitive Orchestration**. These domains are synchronized through a multi-threaded Python core.
 
@@ -56,7 +56,7 @@ graph TD
 
 ---
 
-## 🛠️ Technical Design & Rationale
+## Technical Design & Rationale
 
 | Choice | Rationale | Trade-off |
 | :--- | :--- | :--- |
@@ -67,7 +67,7 @@ graph TD
 
 ---
 
-## ⚠️ Known Limitations & Failure Modes
+## [WARNING] Known Limitations & Failure Modes
 
 Robotics at this scale is inherently prone to failure. Nova acknowledges the following:
 
@@ -78,7 +78,7 @@ Robotics at this scale is inherently prone to failure. Nova acknowledges the fol
 
 ---
 
-## 📦 Getting Started
+## Getting Started
 
 ### Prerequisites
 - **Hardware**: InMoov Head/Neck assembly, Arduino Mega, USB Webcam, Microphone.
@@ -100,7 +100,7 @@ Robotics at this scale is inherently prone to failure. Nova acknowledges the fol
 
 ---
 
-## 🧬 Iteration & Reflection
+## Iteration & Reflection
 
 Nova started as a simple local script using `vosk` and `ollama`, but transitioned to a cloud-hybrid stack to achieve the speed required for humanoid interaction. The biggest challenge was not the AI itself, but the **synchronization of physical movement with synthetic voice**.
 

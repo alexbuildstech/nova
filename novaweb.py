@@ -24,7 +24,7 @@ class WebInterface(threading.Thread):
         self.app.add_url_rule('/status', 'status', self.get_status)
 
     def run(self):
-        print(f"🚀 Starting Web Interface on http://{self.host}:{self.port}")
+        print(f"Starting Web Interface on http://{self.host}:{self.port}")
         # Disable reloader to avoid running in a separate process which breaks shared state
         self.app.run(host=self.host, port=self.port, debug=False, use_reloader=False)
 
@@ -48,26 +48,26 @@ class WebInterface(threading.Thread):
         return Response(self.gen_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
     def record_start(self):
-        print("🌐 Web Command: Start Recording")
+        print("Web Command: Start Recording")
         if not self.stt_service.is_recording:
             self.stt_service._start_recording()
             return jsonify({"status": "recording_started"})
         return jsonify({"status": "already_recording"})
 
     def record_stop(self):
-        print("🌐 Web Command: Stop Recording")
+        print("Web Command: Stop Recording")
         if self.stt_service.is_recording:
             self.stt_service._stop_recording_and_transcribe()
             return jsonify({"status": "recording_stopped"})
         return jsonify({"status": "not_recording"})
 
     def speech_stop(self):
-        print("🌐 Web Command: Terminate Speech")
+        print("Web Command: Terminate Speech")
         self.robot.stop_speech()
         return jsonify({"status": "speech_terminated"})
 
     def reset(self):
-        print("🌐 Web Command: Reset")
+        print("Web Command: Reset")
         # Implement reset logic if needed, e.g., clearing chat history in memory
         # For now, we'll just return success
         return jsonify({"status": "reset_ok"})

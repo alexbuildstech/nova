@@ -60,9 +60,9 @@ void setup() {
     int spaceIdx = input.indexOf(' ');
     minAngle = input.substring(0, spaceIdx).toInt();
     maxAngle = input.substring(spaceIdx+1).toInt();
-    Serial.print("✅ Custom range set: ");
+    Serial.print("[OK] Custom range set: ");
   } else {
-    Serial.print("✅ Default range used: ");
+    Serial.print("[OK] Default range used: ");
   }
   Serial.print(minAngle);
   Serial.print(" - ");
@@ -77,7 +77,7 @@ void setup() {
 
   for (int i = 0; i < NUM_PINS; i++) {
     int currentPin = PINS[i];
-    Serial.print("\n👉 Testing PIN ");
+    Serial.print("\nTesting PIN ");
     Serial.print(currentPin);
     Serial.println("...");
     

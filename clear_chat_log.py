@@ -12,9 +12,9 @@ def clear_chat_log():
     try:
         with open(filename, "w") as f:
             json.dump(empty_structure, f, indent=2)
-        print(f"✅ Successfully cleared {filename}. Memory has been reset.")
+        print(f"[OK] Successfully cleared {filename}. Memory has been reset.")
     except Exception as e:
-        print(f"❌ Error clearing chat log: {e}")
+        print(f"Error clearing chat log: {e}")
 
 if __name__ == "__main__":
     clear_chat_log()

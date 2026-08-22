@@ -1,11 +1,11 @@
 #!/bin/bash
 # setup.sh - Environment setup for Nova Animatronic
 
-echo "🚀 Setting up Nova environment..."
+echo "Setting up Nova environment..."
 
 # Check for GCC
 if ! command -v gcc &> /dev/null; then
-    echo "❌ Error: gcc not found. Please install build-essential."
+    echo "Error: gcc not found. Please install build-essential."
     exit 1
 fi
 
@@ -13,12 +13,12 @@ fi
 export CC=gcc
 
 # Install dependencies
-echo "📦 Installing requirements..."
+echo "Installing requirements..."
 pip3 install -r requirements.txt --break-system-packages --user
 
 if [ $? -eq 0 ]; then
-    echo "✅ Setup complete!"
+    echo "[OK] Setup complete!"
 else
-    echo "❌ Setup failed."
+    echo "[ERROR] Setup failed."
     exit 1
 fi

@@ -46,11 +46,11 @@ class FaceTracker(threading.Thread):
         self.detection_frame_queue = queue.Queue(maxsize=1)
         self.camera_output_queue = queue.Queue(maxsize=1)
 
-        print("ℹ️ Loading DNN Face Detector model...")
+        print("Loading DNN Face Detector model...")
         self.net = cv2.dnn.readNetFromCaffe(
             config.PROTOTXT_PATH, config.CAFFEMODEL_PATH
         )
-        print("✅ DNN Model Loaded.")
+        print("[OK] DNN Model Loaded.")
 
         # --- State Variables ---
         self.NEUTRAL_ANGLE = 80
@@ -85,7 +85,7 @@ class FaceTracker(threading.Thread):
         """Independent camera reader thread."""
         cap = cv2.VideoCapture(self.CAMERA_INDEX)
         if not cap.isOpened():
-            print(f"❌ Error: Could not open camera {self.CAMERA_INDEX}")
+            print(f"Error: Could not open camera {self.CAMERA_INDEX}")
             return
 
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
@@ -170,7 +170,7 @@ class FaceTracker(threading.Thread):
         camera_thread = threading.Thread(target=self._camera_reader_loop, daemon=True)
         camera_thread.start()
         
-        print("✅ Face tracker is running.")
+        print("[OK] Face tracker is running.")
         
         while self.running:
             try:
@@ -214,7 +214,7 @@ class FaceTracker(threading.Thread):
                         self.command_callback(2, f"z {servo_eye_v_angle}")
                         self.last_sent_eye_v_angle = servo_eye_v_angle
                 except Exception as e:
-                    print(f"⚠️ Command callback error: {e}")
+                    print(f"[WARNING] Command callback error: {e}")
 
             time.sleep(0.001)
 

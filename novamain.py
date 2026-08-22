@@ -57,12 +57,12 @@ def take_picture_from_tracker(tracker_instance, save_dir=config.CAPTURES_DIR):
     Captures a high-resolution frame from the active computer vision thread.
     Used for visual analysis and object recognition tasks.
     """
-    print("📸 Initiating image capture sequence...")
+    print("Initiating image capture sequence...")
     frame = tracker_instance.get_latest_frame()
 
     if frame is None:
         print(
-            "❌ ERROR: Video feed unavailable. Check camera connection."
+            "ERROR: Video feed unavailable. Check camera connection."
         )
         return None
 
@@ -79,7 +79,7 @@ def take_picture_from_tracker(tracker_instance, save_dir=config.CAPTURES_DIR):
         frame = cv2.resize(frame, (640, new_height))
         
     cv2.imwrite(path, frame)
-    print(f"✅ Image successfully captured and archived: {path}")
+    print(f"[OK] Image successfully captured and archived: {path}")
     return path
 
 
@@ -138,7 +138,7 @@ def capture_image_callback():
     Optimized event handler that captures visual context only when likely needed.
     """
     global latest_captured_image_path
-    print("📸 Optimized visual context capture triggered...")
+    print("Optimized visual context capture triggered...")
     latest_captured_image_path = take_picture_from_tracker(face_tracker)
 
 # Initialize Speech-to-Text (STT) Engine
@@ -167,7 +167,7 @@ stt_service.start_listener()
 # Allow hardware stabilization
 print("Initializing optical sensors...")
 time.sleep(2)
-print("✅ Nova AI System Online and Ready.")
+print("[OK] Nova AI System Online and Ready.")
 
 
 # --- MAIN APPLICATION LOOP ---
@@ -175,7 +175,7 @@ print("✅ Nova AI System Online and Ready.")
 print("\n" + "=" * 50)
 print("Nova AI Robot - Independent InMoov Modification")
 print("Press 'c' to communicate, 's' to stop.")
-print("🌐 Web Dashboard: http://localhost:5000")
+print("Web Dashboard: http://localhost:5000")
 print("Press Ctrl+C to terminate system.")
 print("=" * 50 + "\n")
 
@@ -197,7 +197,7 @@ search_query_pattern = re.compile(r"#SEARCH_QUERY", re.IGNORECASE)
 fix_ai()
 
 try:
-    print("✅ System Active. Awaiting Input.")
+    print("[OK] System Active. Awaiting Input.")
 
     while True:
         try:
@@ -206,32 +206,32 @@ try:
                 text = stt_service.transcribed_text.strip() if stt_service.transcribed_text is not None else ""
                 
                 if text == "#EXIT":
-                    print("\n👋 Shutdown sequence initiated.")
+                    print("\nShutdown sequence initiated.")
                     break
                     
-                print(f'\n🎤 User Input: "{text}"')
+                print(f'\nUser Input: "{text}"')
                 
                 # Analyze conversation flow
                 conv_flow = conversation_flow_manager(text, conversation_history)
-                print(f"🧠 Conversation Pattern: {conv_flow}")
+                print(f"Conversation Pattern: {conv_flow}")
 
                 # Context-aware visual capture
                 if smart_visual_capture(text):
-                    print("🎯 Visual intent detected via smart filtering.")
+                    print("Visual intent detected via smart filtering.")
                     
                     img_path = latest_captured_image_path
                     if not img_path:
-                        print("⚠️ Visual buffer empty. Capturing real-time frame...")
+                        print("[WARNING] Visual buffer empty. Capturing real-time frame...")
                         img_path = take_picture_from_tracker(face_tracker)
                     else:
-                        print(f"✅ Using buffered visual context: {img_path}")
+                        print(f"[OK] Using buffered visual context: {img_path}")
                     
                     if img_path:
                         output = novaresponse.query_with_image(
                             text, conversation_history, image_path=img_path
                         )
                         if "not a visual query" in output.lower():
-                            print("⚠️ Visual Analysis Rejection. Fallback to LLM.")
+                            print("[WARNING] Visual Analysis Rejection. Fallback to LLM.")
                             fallback_response = "Hmm, I'm having trouble focusing on that right now. Let me try a different approach."
                             robot.speak_text(fallback_response)
                             full_response_text = fallback_response
@@ -256,25 +256,25 @@ try:
                     
                     cleaned_response = full_response_text.strip().strip('"').strip("'").strip()
                     
-                    print(f"🔍 LLM Output: '{cleaned_response}'")
+                    print(f"LLM Output: '{cleaned_response}'")
                     
                     # Check for LLM-triggered Visual Query
                     if cleaned_response == "#VISUAL" or visual_query_pattern.search(cleaned_response):
-                        print("🤖 LLM triggered internal visual query.")
+                        print("LLM triggered internal visual query.")
                         
                         img_path = latest_captured_image_path
                         if not img_path:
-                                print("⚠️ Visual buffer empty. Capturing real-time frame...")
+                                print("[WARNING] Visual buffer empty. Capturing real-time frame...")
                                 img_path = take_picture_from_tracker(face_tracker)
                         else:
-                            print(f"✅ Using buffered visual context: {img_path}")
+                            print(f"[OK] Using buffered visual context: {img_path}")
 
                         if img_path:
                             output = novaresponse.query_with_image(
                                 text, conversation_history, image_path=img_path
                             )
                             if "not a visual query" in output.lower():
-                                print("⚠️ Visual Analysis Rejection. Fallback.")
+                                print("[WARNING] Visual Analysis Rejection. Fallback.")
                                 fallback_response = "I'm having trouble focusing on that right now."
                                 robot.speak_text(fallback_response)
                                 full_response_text = fallback_response
@@ -290,7 +290,7 @@ try:
                     
                     # Check for LLM-triggered Search Query
                     elif search_query_pattern.search(cleaned_response):
-                            print("🔍 Real-time Information Retrieval triggered.")
+                            print("Real-time Information Retrieval triggered.")
                             search_result = novaresponse.search_response(text, conversation_history)
                             robot.speak_text(search_result)
                             full_response_text = search_result
@@ -311,14 +311,14 @@ try:
             time.sleep(0.05)
             
         except Exception as e:
-            print(f"\n❌ Runtime Exception: {e}")
+            print(f"\n[ERROR] Runtime Exception: {e}")
             stt_service.transcribed_text = None
             time.sleep(1)
 
         time.sleep(0.05)
 
 except KeyboardInterrupt:
-    print("\n\n🛑 User Interrupt Detected.")
+    print("\n\nUser Interrupt Detected.")
 
 finally:
     # --- SYSTEM SHUTDOWN PROTOCOL ---
@@ -331,4 +331,4 @@ finally:
     if face_tracker.is_alive():
         face_tracker.join(timeout=5)
 
-    print("✅ Nova AI System Offline.")
+    print("[OK] Nova AI System Offline.")
